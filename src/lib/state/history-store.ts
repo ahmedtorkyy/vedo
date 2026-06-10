@@ -3,50 +3,86 @@ import type { UndoEntry } from '../../types'
 
 const MAX_HISTORY = 50
 
-interface HistoryStore {
+interface ProjectHistory {
   undoStack: UndoEntry[]
   redoStack: UndoEntry[]
-  pushSnapshot: (state: unknown) => void
-  undo: () => string | null
-  redo: () => string | null
+}
+
+interface HistoryStore {
+  historyByProject: Record<string, ProjectHistory>
+  pushSnapshot: (projectId: string, state: unknown) => void
+  undo: (projectId: string) => string | null
+  redo: (projectId: string) => string | null
+  removeProjectHistory: (projectId: string) => void
   clear: () => void
 }
 
+function getProjectHistory(state: HistoryStore['historyByProject'], projectId: string): ProjectHistory {
+  return state[projectId] ?? { undoStack: [], redoStack: [] }
+}
+
 export const useHistoryStore = create<HistoryStore>((set, get) => ({
-  undoStack: [],
-  redoStack: [],
+  historyByProject: {},
 
-  pushSnapshot: (state: unknown) => {
+  pushSnapshot: (projectId: string, state: unknown) => {
     const serialized = JSON.stringify(state)
-    set((s) => ({
-      undoStack: [...s.undoStack.slice(-(MAX_HISTORY - 1)), { timestamp: Date.now(), state: serialized }],
-      redoStack: [],
-    }))
+    set((s) => {
+      const hist = getProjectHistory(s.historyByProject, projectId)
+      return {
+        historyByProject: {
+          ...s.historyByProject,
+          [projectId]: {
+            undoStack: [...hist.undoStack.slice(-(MAX_HISTORY - 1)), { timestamp: Date.now(), state: serialized }],
+            redoStack: [],
+          },
+        },
+      }
+    })
   },
 
-  undo: () => {
-    const { undoStack, redoStack } = get()
-    if (undoStack.length === 0) return null
-    const entry = undoStack[undoStack.length - 1]
+  undo: (projectId: string) => {
+    const { historyByProject } = get()
+    const hist = getProjectHistory(historyByProject, projectId)
+    if (hist.undoStack.length === 0) return null
+    const entry = hist.undoStack[hist.undoStack.length - 1]
     set({
-      undoStack: undoStack.slice(0, -1),
-      redoStack: [...redoStack, entry],
+      historyByProject: {
+        ...historyByProject,
+        [projectId]: {
+          undoStack: hist.undoStack.slice(0, -1),
+          redoStack: [...hist.redoStack, entry],
+        },
+      },
     })
     return entry.state
   },
 
-  redo: () => {
-    const { undoStack, redoStack } = get()
-    if (redoStack.length === 0) return null
-    const entry = redoStack[redoStack.length - 1]
+  redo: (projectId: string) => {
+    const { historyByProject } = get()
+    const hist = getProjectHistory(historyByProject, projectId)
+    if (hist.redoStack.length === 0) return null
+    const entry = hist.redoStack[hist.redoStack.length - 1]
     set({
-      redoStack: redoStack.slice(0, -1),
-      undoStack: [...undoStack, entry],
+      historyByProject: {
+        ...historyByProject,
+        [projectId]: {
+          undoStack: [...hist.undoStack, entry],
+          redoStack: hist.redoStack.slice(0, -1),
+        },
+      },
     })
     return entry.state
+  },
+
+  removeProjectHistory: (projectId: string) => {
+    set((s) => {
+      const next = { ...s.historyByProject }
+      delete next[projectId]
+      return { historyByProject: next }
+    })
   },
 
   clear: () => {
-    set({ undoStack: [], redoStack: [] })
+    set({ historyByProject: {} })
   },
 }))

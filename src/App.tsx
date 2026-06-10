@@ -48,7 +48,7 @@ function Workspace({ onConcatNeeded }: { onConcatNeeded?: (projectId: string) =>
     if (id) onConcatNeeded?.(id)
   }, [onConcatNeeded])
 
-  useKeyboardShortcuts({
+  useKeyboardShortcuts(currentProjectId, {
     Escape: () => {},
   })
 
@@ -83,7 +83,7 @@ function Workspace({ onConcatNeeded }: { onConcatNeeded?: (projectId: string) =>
           <button
             type="button"
             onClick={() => {
-              pushSnapshot(useClipStore.getState())
+              if (currentProjectId) pushSnapshot(currentProjectId, useClipStore.getState())
               announce('State snapshot saved')
             }}
             className="rounded px-2 py-1 text-xs text-gray-400 hover:bg-gray-700 focus:outline-none focus:ring-2 focus:ring-sky-500"

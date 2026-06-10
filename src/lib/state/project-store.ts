@@ -54,7 +54,7 @@ export const useProjectStore = create<ProjectStore>()(
 
         useEditingStore.getState().removeProjectData(id)
 
-        useHistoryStore.getState().clear()
+        useHistoryStore.getState().removeProjectHistory(id)
 
         try { sessionStorage.removeItem('vedo-session') } catch { /* sessionStorage may be unavailable */ }
 
