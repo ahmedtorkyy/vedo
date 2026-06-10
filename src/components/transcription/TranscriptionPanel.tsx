@@ -1,9 +1,11 @@
 import { useState, useCallback } from 'react'
 import { useClipStore } from '../../lib/state'
-import { useTranscriptionStore, isLoading } from '../../lib/transcription'
+import { useTranscriptionStore, getAvailableModels } from '../../lib/transcription'
 import { useTranscription } from '../../hooks/useTranscription'
 import { TranscriptionSegmentRow } from './TranscriptionSegment'
 import type { AudioCleansingOptions } from '../../types'
+
+const MODELS = getAvailableModels()
 
 interface TranscriptionPanelProps {
   projectId: string
@@ -16,10 +18,11 @@ export function TranscriptionPanel({ projectId }: TranscriptionPanelProps) {
   const clipsB = useClipStore((s) => s.getSlotClips(projectId, 'B'))
   const allClips = [...clipsA, ...clipsB]
   const results = useTranscriptionStore((s) => s.results)
-  const { transcribeClip, cleanseClipAudio } = useTranscription()
+  const { transcribeClip, cleanseClipAudio, modelKey, setModelKey } = useTranscription()
 
   const result = selectedClipId ? results[selectedClipId] : undefined
   const selectedClip = allClips.find((c) => c.id === selectedClipId)
+  const loadingModel = Object.values(results).some((r) => r.status === 'transcribing')
 
   const handleTranscribe = useCallback(() => {
     if (selectedClipId) transcribeClip(projectId, selectedClipId)
@@ -38,7 +41,7 @@ export function TranscriptionPanel({ projectId }: TranscriptionPanelProps) {
   }, [])
 
   const canTranscribe = selectedClipId && (!result || result.status === 'idle' || result.status === 'error')
-  const isBusy = result?.status === 'extracting' || result?.status === 'transcribing' || cleansing || isLoading()
+  const isBusy = result?.status === 'extracting' || result?.status === 'transcribing' || cleansing || loadingModel
 
   return (
     <section role="region" aria-label="Transcription panel" className="space-y-3">
@@ -62,6 +65,21 @@ export function TranscriptionPanel({ projectId }: TranscriptionPanelProps) {
         </select>
       </div>
 
+      <div className="space-y-1">
+        <label htmlFor="model-select" className="text-xs text-gray-500">Model</label>
+        <select
+          id="model-select"
+          value={modelKey}
+          onChange={(e) => setModelKey(e.target.value as typeof modelKey)}
+          className="w-full rounded-md border border-gray-600 bg-gray-800 px-3 py-2 text-sm text-gray-200 focus:outline-none focus:ring-2 focus:ring-sky-500"
+          aria-label="Select transcription model"
+        >
+          {MODELS.map((m) => (
+            <option key={m.key} value={m.key}>{m.label}</option>
+          ))}
+        </select>
+      </div>
+
       {selectedClipId && (
         <div className="flex gap-2">
           <button
@@ -73,7 +91,7 @@ export function TranscriptionPanel({ projectId }: TranscriptionPanelProps) {
           >
             {result?.status === 'extracting' && 'Extracting audio...'}
             {result?.status === 'transcribing' && 'Transcribing...'}
-            {isLoading() && 'Loading model...'}
+            {loadingModel && 'Loading model...'}
             {!isBusy && (result?.status === 'done' ? 'Re-transcribe' : 'Transcribe')}
           </button>
 

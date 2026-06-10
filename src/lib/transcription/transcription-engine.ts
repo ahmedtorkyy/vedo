@@ -1,52 +1,112 @@
 import type { TranscriptionSegment } from '../../types'
 
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
-let pipeline: any = null
-let loading = false
-let loaded = false
+let worker: Worker | null = null
 
-export function isModelLoaded(): boolean {
-  return loaded
-}
+type ModelKey = 'whisper-tiny' | 'whisper-base' | 'whisper-small'
 
-export function isLoading(): boolean {
-  return loading
-}
+const SUPPORTED_LANGUAGES = [
+  'en', 'ar', 'zh', 'fr', 'de', 'ja', 'ko', 'es', 'pt', 'ru',
+  'it', 'nl', 'pl', 'tr', 'vi', 'th', 'hi', 'ur',
+] as const
 
-export async function loadTranscriptionModel(): Promise<void> {
-  if (loaded || loading) return
-  loading = true
-  try {
-    const { pipeline: createPipeline } = await import('@xenova/transformers')
-    pipeline = await createPipeline('automatic-speech-recognition', 'Xenova/whisper-tiny.en', {
-      quantized: true,
-    })
-    loaded = true
-  } finally {
-    loading = false
+function getWorker(): Worker {
+  if (!worker) {
+    worker = new Worker(new URL('../workers/transcription.worker.ts', import.meta.url), { type: 'module' })
   }
+  return worker
+}
+
+export function terminateWorker(): void {
+  if (worker) {
+    worker.terminate()
+    worker = null
+  }
+}
+
+export function supportsLanguage(lang: string): boolean {
+  return SUPPORTED_LANGUAGES.includes(lang as typeof SUPPORTED_LANGUAGES[number])
+}
+
+export function getAvailableModels(): { key: ModelKey; label: string }[] {
+  return [
+    { key: 'whisper-tiny', label: 'Whisper Tiny (multilingual, fastest)' },
+    { key: 'whisper-base', label: 'Whisper Base (multilingual, balanced)' },
+    { key: 'whisper-small', label: 'Whisper Small (multilingual, best accuracy)' },
+  ]
+}
+
+export async function loadTranscriptionModel(modelKey: ModelKey = 'whisper-tiny'): Promise<void> {
+  const w = getWorker()
+  return new Promise<void>((resolve, reject) => {
+    const handler = (e: MessageEvent) => {
+      const { type } = e.data
+      if (type === 'model-loaded') {
+        w.removeEventListener('message', handler)
+        resolve()
+      }
+      if (type === 'load-error') {
+        w.removeEventListener('message', handler)
+        reject(new Error(e.data.error))
+      }
+    }
+    w.addEventListener('message', handler)
+    w.postMessage({ type: 'load', payload: { model: modelKey } })
+  })
 }
 
 export async function transcribeAudio(
   audioData: Float32Array,
+  sampleRate: number,
 ): Promise<{ segments: TranscriptionSegment[]; language: string }> {
-  if (!pipeline) throw new Error('Model not loaded')
+  const w = getWorker()
 
-  const result = await pipeline(audioData, {
-    return_timestamps: true,
-    chunk_length_s: 30,
-    stride_length_s: 5,
+  return new Promise<{ segments: TranscriptionSegment[]; language: string }>((resolve, reject) => {
+    const handler = (e: MessageEvent) => {
+      const { type } = e.data
+      if (type === 'result') {
+        w.removeEventListener('message', handler)
+        resolve({ segments: e.data.segments, language: e.data.language ?? 'en' })
+      }
+      if (type === 'error') {
+        w.removeEventListener('message', handler)
+        reject(new Error(e.data.error))
+      }
+    }
+    w.addEventListener('message', handler)
+    w.postMessage({ type: 'transcribe', payload: { audio: audioData, sampleRate } }, [audioData.buffer])
   })
+}
 
-  const raw: { timestamp?: [number, number]; text?: string; transcript?: string }[] = result.chunks ?? result.segments ?? []
-  const segments: TranscriptionSegment[] = raw.map((chunk) => ({
-    start: typeof chunk.timestamp?.[0] === 'number' ? chunk.timestamp[0] : 0,
-    end: typeof chunk.timestamp?.[1] === 'number' ? chunk.timestamp[1] : 0,
-    text: (chunk.text ?? chunk.transcript ?? '').trim(),
-  }))
+export function decodeWavToF32(buffer: ArrayBuffer): { audio: Float32Array; sampleRate: number } | null {
+  const view = new DataView(buffer)
+  const header = readWavHeader(view)
+  if (!header) return null
 
-  const language = typeof result.language === 'string' ? result.language : 'en'
-  return { segments, language }
+  const { sampleRate, dataOffset, dataLength } = header
+  const channels = view.getUint16(22, true)
+  const bitsPerSample = view.getUint16(34, true)
+  const bytesPerFrame = channels * (bitsPerSample / 8)
+  const frames = Math.floor(dataLength / bytesPerFrame)
+
+  const audio = new Float32Array(frames)
+
+  if (bitsPerSample === 16) {
+    for (let i = 0; i < frames; i++) {
+      audio[i] = view.getInt16(dataOffset + i * bytesPerFrame, true) / 32768
+    }
+  } else if (bitsPerSample === 32) {
+    for (let i = 0; i < frames; i++) {
+      audio[i] = view.getFloat32(dataOffset + i * bytesPerFrame, true)
+    }
+  } else if (bitsPerSample === 8) {
+    for (let i = 0; i < frames; i++) {
+      audio[i] = (view.getUint8(dataOffset + i * bytesPerFrame) - 128) / 128
+    }
+  } else {
+    return null
+  }
+
+  return { audio, sampleRate }
 }
 
 function readWavHeader(view: DataView): { sampleRate: number; dataOffset: number; dataLength: number } | null {
@@ -72,39 +132,4 @@ function readWavHeader(view: DataView): { sampleRate: number; dataOffset: number
 
   const dataLength = view.byteLength - dataOffset
   return { sampleRate, dataOffset, dataLength }
-}
-
-export function decodeWavToF32(buffer: ArrayBuffer): { audio: Float32Array; sampleRate: number } | null {
-  const view = new DataView(buffer)
-  const header = readWavHeader(view)
-  if (!header) return null
-
-  const { sampleRate, dataOffset, dataLength } = header
-  const channels = view.getUint16(22, true)
-  const bitsPerSample = view.getUint16(34, true)
-  const bytesPerFrame = channels * (bitsPerSample / 8)
-  const frames = Math.floor(dataLength / bytesPerFrame)
-
-  const audio = new Float32Array(frames)
-
-  if (bitsPerSample === 16) {
-    for (let i = 0; i < frames; i++) {
-      const byteOffset = dataOffset + i * bytesPerFrame
-      audio[i] = view.getInt16(byteOffset, true) / 32768
-    }
-  } else if (bitsPerSample === 32) {
-    for (let i = 0; i < frames; i++) {
-      const byteOffset = dataOffset + i * bytesPerFrame
-      audio[i] = view.getFloat32(byteOffset, true)
-    }
-  } else if (bitsPerSample === 8) {
-    for (let i = 0; i < frames; i++) {
-      const byteOffset = dataOffset + i * bytesPerFrame
-      audio[i] = (view.getUint8(byteOffset) - 128) / 128
-    }
-  } else {
-    return null
-  }
-
-  return { audio, sampleRate }
 }

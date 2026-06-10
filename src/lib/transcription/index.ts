@@ -1,2 +1,9 @@
 export { useTranscriptionStore } from './transcription-store'
-export { loadTranscriptionModel, transcribeAudio, decodeWavToF32, isModelLoaded, isLoading } from './transcription-engine'
+export {
+  loadTranscriptionModel,
+  transcribeAudio,
+  decodeWavToF32,
+  terminateWorker,
+  supportsLanguage,
+  getAvailableModels,
+} from './transcription-engine'
