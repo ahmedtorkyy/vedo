@@ -232,15 +232,21 @@ self.onmessage = async (e: MessageEvent) => {
   if (type === 'render-clip') {
     try {
       const instance = await getFFmpeg()
-      const { projectId, inputName, outputName, filterComplex } = payload as {
+      const { projectId, inputName, outputName, filterComplex, overlayInputName } = payload as {
         projectId: string; inputName: string; outputName: string; filterComplex: string
+        overlayInputName?: string
       }
 
       const raw = await readOpfsFile(projectId, inputName)
       await instance.writeFile(inputName, raw)
 
-      await instance.exec([
-        '-i', inputName,
+      const args = ['-i', inputName]
+      if (overlayInputName) {
+        const overlayRaw = await readOpfsFile(projectId, overlayInputName)
+        await instance.writeFile(overlayInputName, overlayRaw)
+        args.push('-i', overlayInputName)
+      }
+      args.push(
         '-filter_complex', filterComplex,
         '-map', '[v]',
         '-map', '[a]',
@@ -251,13 +257,18 @@ self.onmessage = async (e: MessageEvent) => {
         '-b:a', '128k',
         '-f', 'mp4',
         outputName,
-      ])
+      )
+
+      await instance.exec(args)
 
       const result = await instance.readFile(outputName) as Uint8Array
       const copy = new Uint8Array(result.byteLength)
       copy.set(result)
       await writeOpfsFile(projectId, outputName, copy)
 
+      if (overlayInputName) {
+        await instance.deleteFile(overlayInputName).catch(() => {})
+      }
       await instance.deleteFile(inputName)
       await instance.deleteFile(outputName)
       purgeMemfs()
@@ -304,7 +315,7 @@ self.onmessage = async (e: MessageEvent) => {
       const result = await instance.readFile(outputName) as Uint8Array
       const copy = new Uint8Array(result.byteLength)
       copy.set(result)
-      await writeOpfsFile(projectId, outputName.replace(/^_/, ''), copy)
+      await writeOpfsFile(projectId, outputName, copy)
 
       for (const clip of clips) {
         await instance.deleteFile(clip.name).catch(() => {})
@@ -312,7 +323,7 @@ self.onmessage = async (e: MessageEvent) => {
       await instance.deleteFile('concat.txt').catch(() => {})
       purgeMemfs()
 
-      self.postMessage({ type: 'render-concat-done', outputFilename: outputName.replace(/^_/, '') })
+      self.postMessage({ type: 'render-concat-done', outputFilename: outputName })
     } catch (err) {
       purgeMemfs()
       self.postMessage({ type: 'render-concat-error', error: String(err) })
