@@ -27,13 +27,6 @@ export interface ConcatJob {
   error?: string
 }
 
-export interface ProjectState {
-  projects: Project[]
-  currentProjectId: string | null
-  clips: Record<string, Clip[]>
-  concatJob: ConcatJob
-}
-
 export interface UndoEntry {
   timestamp: number
   state: string

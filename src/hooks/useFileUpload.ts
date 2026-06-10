@@ -3,6 +3,12 @@ import { v4 as uuid } from 'uuid'
 import { useClipStore } from '../lib/state'
 import { createProjectDirectory, streamFileToOPFS } from '../lib/opfs'
 
+function cleanupUploadEntry(clipId: string, delayMs = 4000): void {
+  setTimeout(() => {
+    useClipStore.getState().removeUploadProgress(clipId)
+  }, delayMs)
+}
+
 interface UploadOptions {
   projectId: string
   slot: 'A' | 'B'
@@ -63,6 +69,7 @@ export function useFileUpload() {
         })
 
         setUploadProgress(clipId, { status: 'done', progress: 100 })
+        cleanupUploadEntry(clipId)
 
         addClip(projectId, slot, {
           fileName: file.name,
@@ -76,6 +83,7 @@ export function useFileUpload() {
         onFileComplete?.(file.name)
       } catch (err) {
         setUploadProgress(clipId, { status: 'error', error: String(err) })
+        cleanupUploadEntry(clipId)
       }
     }
 
