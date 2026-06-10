@@ -1,4 +1,4 @@
-import { useProjectStore, useClipStore } from '../../lib/state'
+import { useProjectStore, useClipStore, useHistoryStore } from '../../lib/state'
 import { ProjectList } from './ProjectList'
 import { NewProjectDialog } from './NewProjectDialog'
 import { useState } from 'react'
@@ -51,8 +51,12 @@ export function Sidebar({ onProjectChange }: SidebarProps) {
         }
       }
     }
-    deleteProject(id)
     await ProjectStorage.deleteProjectFolder(id)
+    await ProjectStorage.writeMetadata(id, { deleted: true })
+    deleteProject(id)
+    useClipStore.getState().removeProjectData(id)
+    useClipStore.getState().setConcatStatus('idle')
+    useHistoryStore.getState().clear()
     announce(`Deleted project ${project?.name ?? id}`)
     onProjectChange()
   }

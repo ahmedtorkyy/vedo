@@ -32,9 +32,14 @@ export function SlotA({ projectId, onPlayClip, onConcatNeeded }: SlotAProps) {
       slot: 'A',
       files,
       onFileStart: (name) => announce(`Uploading ${name}`, true),
+      onProgress: (name, pct) => {
+        if (pct === 25 || pct === 50 || pct === 75 || pct % 100 === 0) {
+          announce(`${name}: ${pct}%`, pct === 100)
+        }
+      },
       onFileComplete: (name) => {
         completed++
-        announce(`${name} uploaded. ${completed} of ${count} complete.`)
+        announce(`${name} complete. ${completed} of ${count} uploaded.`)
       },
       onAllComplete: () => {
         announce(`All ${count} files uploaded. Starting timeline stitch.`)
@@ -55,7 +60,6 @@ export function SlotA({ projectId, onPlayClip, onConcatNeeded }: SlotAProps) {
 
   const handleDelete = useCallback(async (clipId: string) => {
     const clip = clips.find((c) => c.id === clipId)
-    removeClip(projectId, 'A', clipId)
     if (clip) {
       try {
         await ProjectStorage.deleteFile(projectId, clip.opfsFilename)
@@ -63,6 +67,7 @@ export function SlotA({ projectId, onPlayClip, onConcatNeeded }: SlotAProps) {
         // file may not exist
       }
     }
+    removeClip(projectId, 'A', clipId)
     announce(`Deleted ${clip?.fileName ?? 'clip'}`)
     onConcatNeeded?.()
   }, [projectId, clips, removeClip, announce, onConcatNeeded])

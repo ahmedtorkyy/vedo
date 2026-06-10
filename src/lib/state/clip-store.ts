@@ -16,6 +16,7 @@ interface ClipState {
   setUploadProgress: (clipId: string, progress: number, status: UploadProgressEntry['status'], error?: string) => void;
   removeUploadProgress: (clipId: string) => void;
   setConcatStatus: (status: ClipState['concatJob']['status']) => void;
+  removeProjectData: (projectId: string) => void;
 }
 
 export const useClipStore = create<ClipState>()(
@@ -96,7 +97,13 @@ export const useClipStore = create<ClipState>()(
         return { uploads: next };
       }),
 
-      setConcatStatus: (status) => set({ concatJob: { status } })
+      setConcatStatus: (status) => set({ concatJob: { status } }),
+
+      removeProjectData: (projectId) => set((state) => {
+        const next = { ...state.clips }
+        delete next[projectId]
+        return { clips: next }
+      }),
     }),
     {
       name: 'vedo-clips',

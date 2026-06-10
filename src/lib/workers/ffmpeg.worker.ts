@@ -7,7 +7,7 @@ const MEMFS_WARN_BYTES = 256 * 1024 * 1024
 const MEMFS_LIMIT_BYTES = 1.5 * 1024 * 1024 * 1024
 
 async function getFFmpeg(): Promise<FFmpeg> {
-    if (!ffmpeg) {
+  if (!ffmpeg) {
     ffmpeg = new FFmpeg()
     ffmpeg.on('progress', ({ progress }) => {
       self.postMessage({ type: 'concat-progress', progress })
@@ -28,6 +28,46 @@ async function getFFmpeg(): Promise<FFmpeg> {
   return ffmpeg
 }
 
+async function readOpfsFile(projectId: string, filename: string): Promise<Uint8Array> {
+  const root = await navigator.storage.getDirectory()
+  const folder = await root.getDirectoryHandle(`project_${projectId}`)
+  const handle = await folder.getFileHandle(filename)
+  const file = await handle.getFile()
+
+  const reader = file.stream().getReader()
+  const chunks: Uint8Array[] = []
+  let total = 0
+
+  while (true) {
+    const { done, value } = await reader.read()
+    if (done) break
+    const copy = new Uint8Array(value.byteLength)
+    copy.set(new Uint8Array(value.buffer, value.byteOffset, value.byteLength))
+    chunks.push(copy)
+    total += value.byteLength
+  }
+
+  const result = new Uint8Array(total)
+  let offset = 0
+  for (const chunk of chunks) {
+    result.set(chunk, offset)
+    offset += chunk.byteLength
+  }
+  return result
+}
+
+async function writeOpfsFile(projectId: string, filename: string, data: Uint8Array): Promise<void> {
+  const root = await navigator.storage.getDirectory()
+  const folder = await root.getDirectoryHandle(`project_${projectId}`, { create: true })
+  const safeName = filename.replace(/[^a-zA-Z0-9._-]/g, '_')
+  const handle = await folder.getFileHandle(safeName, { create: true })
+  const writable = await handle.createWritable()
+  const copy = new Uint8Array(data.byteLength)
+  copy.set(data)
+  await writable.write(copy)
+  await writable.close()
+}
+
 function purgeMemfs(): void {
   if (ffmpeg) {
     ffmpeg.terminate()
@@ -41,9 +81,17 @@ self.onmessage = async (e: MessageEvent) => {
   if (type === 'concat') {
     try {
       const instance = await getFFmpeg()
-      const { clips } = payload as { clips: { name: string; data: ArrayBuffer }[] }
+      const { projectId, clips } = payload as { projectId: string; clips: { name: string }[] }
 
-      const totalBytes = clips.reduce((sum, c) => sum + c.data.byteLength, 0)
+      let totalBytes = 0
+      for (const clip of clips) {
+        const root = await navigator.storage.getDirectory()
+        const folder = await root.getDirectoryHandle(`project_${projectId}`)
+        const handle = await folder.getFileHandle(clip.name)
+        const file = await handle.getFile()
+        totalBytes += file.size
+      }
+
       if (totalBytes > MEMFS_LIMIT_BYTES) {
         self.postMessage({
           type: 'concat-error',
@@ -59,7 +107,8 @@ self.onmessage = async (e: MessageEvent) => {
       }
 
       for (const clip of clips) {
-        await instance.writeFile(clip.name, new Uint8Array(clip.data))
+        const raw = await readOpfsFile(projectId, clip.name)
+        await instance.writeFile(clip.name, raw)
       }
 
       const concatContent = clips.map((c) => `file '${c.name}'`).join('\n')
@@ -68,8 +117,10 @@ self.onmessage = async (e: MessageEvent) => {
 
       await instance.exec(['-f', 'concat', '-safe', '0', '-i', concatName, '-c', 'copy', 'output.mp4'])
 
-      const raw = await instance.readFile('output.mp4')
-      const result = raw as Uint8Array
+      const raw = await instance.readFile('output.mp4') as Uint8Array
+
+      const outFilename = `_concat_output_${Date.now()}.mp4`
+      await writeOpfsFile(projectId, outFilename, raw)
 
       await instance.deleteFile(concatName)
       await instance.deleteFile('output.mp4')
@@ -77,10 +128,9 @@ self.onmessage = async (e: MessageEvent) => {
         await instance.deleteFile(clip.name)
       }
 
-      const resultBuf = result.buffer.slice(0) as ArrayBuffer
-      self.postMessage({ type: 'concat-done', data: resultBuf }, { transfer: [resultBuf] })
-
       purgeMemfs()
+
+      self.postMessage({ type: 'concat-done', outputFilename: outFilename })
     } catch (err) {
       purgeMemfs()
       self.postMessage({ type: 'concat-error', error: String(err) })

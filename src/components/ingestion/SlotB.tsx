@@ -29,6 +29,11 @@ export function SlotB({ projectId, onPlayClip }: SlotBProps) {
       slot: 'B',
       files,
       onFileStart: (name) => announce(`Uploading overlay ${name}`, true),
+      onProgress: (name, pct) => {
+        if (pct === 25 || pct === 50 || pct === 75 || pct % 100 === 0) {
+          announce(`Overlay ${name}: ${pct}%`, pct === 100)
+        }
+      },
       onFileComplete: (name) => announce(`${name} overlay uploaded`),
       onAllComplete: () => announce(`All ${count} overlay files uploaded`),
     })
@@ -46,7 +51,6 @@ export function SlotB({ projectId, onPlayClip }: SlotBProps) {
 
   const handleDelete = useCallback(async (clipId: string) => {
     const clip = clips.find((c) => c.id === clipId)
-    removeClip(projectId, 'B', clipId)
     if (clip) {
       try {
         await ProjectStorage.deleteFile(projectId, clip.opfsFilename)
@@ -54,6 +58,7 @@ export function SlotB({ projectId, onPlayClip }: SlotBProps) {
         // file may not exist
       }
     }
+    removeClip(projectId, 'B', clipId)
     announce(`Deleted overlay ${clip?.fileName ?? 'clip'}`)
   }, [projectId, clips, removeClip, announce])
 

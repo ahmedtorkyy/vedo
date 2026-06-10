@@ -5,11 +5,14 @@ import { ProjectStorage } from '../lib/opfs/project-storage'
 import { AudioOrchestrator } from '../lib/audio/AudioOrchestrator'
 import { SUPPORTED_MIME_TYPES } from '../types'
 
+import { UPLOAD_LIMITS } from '../types'
+
 interface UploadOptions {
   projectId: string
   slot: 'A' | 'B'
   files: FileList
   onFileStart?: (name: string) => void
+  onProgress?: (name: string, pct: number) => void
   onFileComplete?: (name: string) => void
   onAllComplete?: () => void
 }
@@ -20,8 +23,23 @@ export function useFileUpload() {
   const addClip = useClipStore((s) => s.addClip)
 
   const uploadFiles = useCallback(async (options: UploadOptions) => {
-    const { projectId, slot, files, onFileStart, onFileComplete, onAllComplete } = options
+    const { projectId, slot, files, onFileStart, onProgress, onFileComplete, onAllComplete } = options
     const audioMatrix = AudioOrchestrator.getInstance()
+
+    if (files.length > UPLOAD_LIMITS.maxFileCount) {
+      initUpload({ clipId: 'batch-limit', fileName: '', progress: 0, status: 'error', error: `Maximum ${UPLOAD_LIMITS.maxFileCount} files per batch.` })
+      return
+    }
+
+    let projectTotal = 0
+    const stores = useClipStore.getState()
+    if (stores.clips[projectId]) {
+      for (const slotKey of ['A', 'B'] as const) {
+        for (const c of stores.clips[projectId][slotKey] || []) {
+          projectTotal += c.fileSize
+        }
+      }
+    }
 
     for (let i = 0; i < files.length; i++) {
       const file = files[i]
@@ -29,6 +47,16 @@ export function useFileUpload() {
 
       if (!SUPPORTED_MIME_TYPES.has(file.type) && !file.type.startsWith('video/')) {
         setUploadProgress(clipId, 0, 'error', `Unsupported type: ${file.type}`)
+        continue
+      }
+
+      if (file.size > UPLOAD_LIMITS.maxFileSize) {
+        setUploadProgress(clipId, 0, 'error', `File exceeds ${(UPLOAD_LIMITS.maxFileSize / 1e9).toFixed(1)}GB limit.`)
+        continue
+      }
+
+      if (projectTotal + file.size > UPLOAD_LIMITS.maxTotalBytesPerProject) {
+        setUploadProgress(clipId, 0, 'error', `Project would exceed ${(UPLOAD_LIMITS.maxTotalBytesPerProject / 1e9).toFixed(1)}GB total limit.`)
         continue
       }
 
@@ -43,11 +71,18 @@ export function useFileUpload() {
 
       try {
         const safeName = `${clipId}_${file.name.replace(/[^a-zA-Z0-9._-]/g, '_')}`
-        const opfsPath = await ProjectStorage.saveFile(projectId, safeName, file)
+        const opfsPath = await ProjectStorage.saveFileWithProgress(
+          projectId,
+          safeName,
+          file,
+          (pct) => {
+            setUploadProgress(clipId, pct, pct < 100 ? 'uploading' : 'done')
+            onProgress?.(file.name, pct)
+          },
+        )
 
         audioMatrix.registerClipChannel(clipId)
-
-        setUploadProgress(clipId, 100, 'done')
+        projectTotal += file.size
 
         addClip(projectId, slot, {
           id: clipId,

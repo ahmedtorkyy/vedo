@@ -1,10 +1,11 @@
 import { useClipStore } from '../state/clip-store'
+import type { Clip } from '../../types'
 
 let worker: Worker | null = null
 let isRunning = false
 
 type ResolveReject = {
-  resolve: (data: Uint8Array) => void
+  resolve: (outputFilename: string) => void
   reject: (err: Error) => void
 }
 
@@ -40,9 +41,8 @@ function handleWorkerMessage(e: MessageEvent) {
   }
 
   if (type === 'concat-done') {
-    const { data } = e.data
     useClipStore.getState().setConcatStatus('done')
-    pendingConcat?.resolve(new Uint8Array(data))
+    pendingConcat?.resolve(e.data.outputFilename ?? '_concat_output.mp4')
     pendingConcat = null
     isRunning = false
     return
@@ -69,8 +69,9 @@ export async function loadFFmpeg(): Promise<void> {
 }
 
 export async function concatClips(
-  clips: { name: string; data: ArrayBuffer }[]
-): Promise<Uint8Array> {
+  projectId: string,
+  clips: Pick<Clip, 'opfsFilename'>[],
+): Promise<string> {
   if (isRunning) {
     throw new Error('A concat operation is already in progress')
   }
@@ -78,10 +79,15 @@ export async function concatClips(
 
   useClipStore.getState().setConcatStatus('concatenating')
 
-  return new Promise<Uint8Array>((resolve, reject) => {
+  return new Promise<string>((resolve, reject) => {
     pendingConcat = { resolve, reject }
-    const transferables = clips.map((c) => c.data)
-    getWorker().postMessage({ type: 'concat', payload: { clips } }, transferables)
+    getWorker().postMessage({
+      type: 'concat',
+      payload: {
+        projectId,
+        clips: clips.map((c) => ({ name: c.opfsFilename })),
+      },
+    })
   })
 }
 

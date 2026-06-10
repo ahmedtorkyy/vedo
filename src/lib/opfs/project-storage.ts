@@ -18,15 +18,60 @@ export class ProjectStorage {
     const safeName = filename.replace(/[^a-zA-Z0-9._-]/g, '_');
     const fileHandle = await folder.getFileHandle(safeName, { create: true });
     const writable = await fileHandle.createWritable();
-    
+
     if (data instanceof ReadableStream) {
       await data.pipeTo(writable);
     } else {
       await writable.write(data);
       await writable.close();
     }
-    
+
     return `opfs://project_${projectId}/${safeName}`;
+  }
+
+  static async saveFileWithProgress(
+    projectId: string,
+    filename: string,
+    file: File,
+    onProgress?: (pct: number) => void,
+  ): Promise<string> {
+    const folder = await this.getProjectFolder(projectId);
+    const safeName = filename.replace(/[^a-zA-Z0-9._-]/g, '_');
+    const fileHandle = await folder.getFileHandle(safeName, { create: true });
+    const writable = await fileHandle.createWritable();
+
+    const total = file.size;
+    let written = 0;
+    const reader = file.stream().getReader();
+    while (true) {
+      const { done, value } = await reader.read();
+      if (done) break;
+      await writable.write(value);
+      written += value.byteLength;
+      onProgress?.(Math.round((written / total) * 100));
+    }
+    await writable.close();
+
+    return `opfs://project_${projectId}/${safeName}`;
+  }
+
+  static async readChunked(
+    projectId: string,
+    filename: string,
+    onChunk: (chunk: Uint8Array, done: boolean) => void | Promise<void>,
+  ): Promise<void> {
+    const folder = await this.getProjectFolder(projectId);
+    const handle = await folder.getFileHandle(filename);
+    const file = await handle.getFile();
+    const reader = file.stream().getReader();
+    while (true) {
+      const { done, value } = await reader.read();
+      if (done) {
+        await onChunk(new Uint8Array(0), true);
+        break;
+      }
+      await onChunk(new Uint8Array(value.buffer, value.byteOffset, value.byteLength), false);
+    }
   }
 
   static async getFile(projectId: string, filename: string): Promise<File> {

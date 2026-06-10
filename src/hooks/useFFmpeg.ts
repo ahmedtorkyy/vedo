@@ -1,7 +1,6 @@
 import { useEffect, useCallback } from 'react'
 import { loadFFmpeg, concatClips, terminateWorker } from '../lib/ffmpeg'
 import { useClipStore } from '../lib/state'
-import { ProjectStorage } from '../lib/opfs'
 
 export function useFFmpeg() {
   const concatJob = useClipStore((s) => s.concatJob)
@@ -19,28 +18,8 @@ export function useFFmpeg() {
       return
     }
 
-    const clipData: { name: string; data: ArrayBuffer }[] = []
     try {
-      for (const clip of clips) {
-        const file = await ProjectStorage.getFile(projectId, clip.opfsFilename)
-        const buffer = await file.arrayBuffer()
-        clipData.push({ name: clip.opfsFilename, data: buffer })
-      }
-    } catch {
-      store.setConcatStatus('error')
-      return
-    }
-
-    if (clipData.length < 2) {
-      store.setConcatStatus(clipData.length === 1 ? 'done' : 'idle')
-      return
-    }
-
-    try {
-      const result = await concatClips(clipData)
-      const copy = new Uint8Array(result.byteLength)
-      copy.set(result)
-      await ProjectStorage.saveFile(projectId, '_concat_output.mp4', new Blob([copy]))
+      await concatClips(projectId, clips)
       store.setConcatStatus('done')
     } catch {
       store.setConcatStatus('error')

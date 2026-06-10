@@ -41,3 +41,9 @@ export const SUPPORTED_MIME_TYPES = new Set([
   'audio/mpeg', 'audio/wav', 'audio/ogg', 'audio/webm', 'audio/mp4',
   'image/png', 'image/jpeg', 'image/webp',
 ])
+
+export const UPLOAD_LIMITS = {
+  maxFileSize: 2 * 1024 * 1024 * 1024,
+  maxFileCount: 50,
+  maxTotalBytesPerProject: 10 * 1024 * 1024 * 1024,
+} as const
