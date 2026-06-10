@@ -36,7 +36,10 @@ function extractOverlayKeywords(fileName: string): string[] {
 
 export function matchKeyword(text: string, keyword: string): boolean {
   const escaped = keyword.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
-  return new RegExp(`\\b${escaped}\\b`, 'i').test(text)
+  return new RegExp(
+    `(?:^|[^\\p{L}])${escaped}(?=[^\\p{L}]|$)`,
+    'iu',
+  ).test(text)
 }
 
 function findRelevantTimeRange(

@@ -45,10 +45,9 @@ describe('splitRegionAcrossClips', () => {
     expect(result).toHaveLength(0)
   })
 
-  it('handles no clipOffsets (single clip fallback)', () => {
+  it('returns empty when clipOffsets are unavailable', () => {
     const result = splitRegionAcrossClips(2, 8, CLIPS, undefined)
-    expect(result).toHaveLength(1)
-    expect(result[0].clipId).toBe('clip1')
+    expect(result).toHaveLength(0)
   })
 })
 
@@ -238,5 +237,62 @@ describe('detectHooks with maxStartTime', () => {
   it('returns all hooks when no limit is set', () => {
     const hooks = detectHooks(segments)
     expect(hooks.length).toBeGreaterThanOrEqual(2)
+  })
+})
+
+// --- Issue 5: Arabic matchKeyword with Unicode boundaries ---
+describe('matchKeyword with Arabic', () => {
+  it('matches Arabic word with spaces around it', () => {
+    expect(matchKeyword('هذا هاتف جديد', 'هاتف')).toBe(true)
+  })
+
+  it('matches Arabic word at start of text', () => {
+    expect(matchKeyword('هاتف جديد رائع', 'هاتف')).toBe(true)
+  })
+
+  it('matches Arabic word at end of text', () => {
+    expect(matchKeyword('لدي هاتف', 'هاتف')).toBe(true)
+  })
+
+  it('does not match substring inside another Arabic word', () => {
+    expect(matchKeyword('هواتف متعددة', 'هاتف')).toBe(false)
+  })
+
+  it('matches Arabic word with punctuation after it', () => {
+    expect(matchKeyword('هذا هاتف، جديد', 'هاتف')).toBe(true)
+  })
+
+  it('matches Arabic word with punctuation before it', () => {
+    expect(matchKeyword('لدي:هاتف جديد', 'هاتف')).toBe(true)
+  })
+})
+
+// --- Overlay spanning multiple clips ---
+describe('overlay splitting across clips', () => {
+  it('splits an overlay region across two clips', () => {
+    const result = splitRegionAcrossClips(8, 14, CLIPS, CLIP_OFFSETS)
+    expect(result).toHaveLength(2)
+    expect(result[0]).toEqual({ clipId: 'clip1', localStart: 8, localEnd: 10 })
+    expect(result[1]).toEqual({ clipId: 'clip2', localStart: 0, localEnd: 4 })
+  })
+
+  it('splits an overlay region across three clips', () => {
+    const result = splitRegionAcrossClips(5, 28, CLIPS, CLIP_OFFSETS)
+    expect(result).toHaveLength(3)
+    expect(result[0]).toEqual({ clipId: 'clip1', localStart: 5, localEnd: 10 })
+    expect(result[1]).toEqual({ clipId: 'clip2', localStart: 0, localEnd: 15 })
+    expect(result[2]).toEqual({ clipId: 'clip3', localStart: 0, localEnd: 3 })
+  })
+
+  it('handles overlay entirely within one clip', () => {
+    const result = splitRegionAcrossClips(2, 5, CLIPS, CLIP_OFFSETS)
+    expect(result).toHaveLength(1)
+    expect(result[0]).toEqual({ clipId: 'clip1', localStart: 2, localEnd: 5 })
+  })
+
+  it('handles overlay starting before first clip', () => {
+    const result = splitRegionAcrossClips(-2, 5, CLIPS, CLIP_OFFSETS)
+    expect(result).toHaveLength(1)
+    expect(result[0]).toEqual({ clipId: 'clip1', localStart: 0, localEnd: 5 })
   })
 })

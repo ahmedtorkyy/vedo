@@ -32,7 +32,7 @@ export function getClipAtTime(
       return clips.find((c) => c.id === offset.clipId) ?? null
     }
   }
-  return clips.find((c) => c.slot === 'A') ?? null
+  return null
 }
 
 export function globalToLocal(
@@ -51,14 +51,6 @@ export function splitRegionAcrossClips(
   clipOffsets: { clipId: string; offsetStart: number; offsetEnd: number }[] | undefined,
 ): { clipId: string; localStart: number; localEnd: number }[] {
   if (!clipOffsets || clipOffsets.length === 0) {
-    const clip = clips.find((c) => c.slot === 'A' && c.duration >= globalStart)
-    if (clip) {
-      return [{
-        clipId: clip.id,
-        localStart: globalStart,
-        localEnd: Math.min(clip.duration, globalEnd),
-      }]
-    }
     return []
   }
 
@@ -137,17 +129,18 @@ export function createEditPlan(input: PlannerInput): EditPlan {
 
     if (hookSplits.length > 0) {
       for (const split of hookSplits) {
+        const actualDuration = Math.min(
+          split.localEnd - split.localStart,
+          1.5,
+        )
         decisions.push({
           id: `zoom-hook-${split.clipId}-${split.localStart.toFixed(1)}`,
           type: 'zoom',
           clipId: split.clipId,
           slot: 'A',
           startTime: split.localStart,
-          endTime: Math.min(
-            split.localEnd,
-            split.localStart + 1.5,
-          ),
-          parameters: { intensity: style.zoom, duration: 1.5 },
+          endTime: split.localStart + actualDuration,
+          parameters: { intensity: style.zoom, duration: actualDuration },
           justification: `Subtle zoom on hook to draw viewer attention`,
         })
       }
@@ -207,18 +200,16 @@ export function createEditPlan(input: PlannerInput): EditPlan {
       })
 
       for (const od of overlayDecisions) {
-        const targetClip = getClipAtTime(input.clips, input.clipOffsets, od.startTime)
-        if (targetClip) {
-          const localStart = globalToLocal(od.startTime, targetClip.id, input.clipOffsets)
-          const localEnd = globalToLocal(od.endTime, targetClip.id, input.clipOffsets)
+        const splits = splitRegionAcrossClips(od.startTime, od.endTime, input.clips, input.clipOffsets)
+        for (const split of splits) {
           decisions.push({
-            id: `overlay-${od.overlayClipId}-${od.startTime.toFixed(1)}`,
+            id: `overlay-${od.overlayClipId}-${split.localStart.toFixed(1)}-${split.clipId}`,
             type: 'overlay',
-            clipId: targetClip.id,
-            slot: targetClip.slot,
+            clipId: split.clipId,
+            slot: 'A',
             overlayClipId: od.overlayClipId,
-            startTime: Math.max(0, localStart),
-            endTime: Math.min(targetClip.duration, localEnd),
+            startTime: split.localStart,
+            endTime: split.localEnd,
             parameters: {
               placement: od.placement,
               scale: od.scale,
@@ -226,25 +217,6 @@ export function createEditPlan(input: PlannerInput): EditPlan {
             },
             justification: od.reason,
           })
-        } else {
-          const firstMain = mainClips[0]
-          if (firstMain) {
-            decisions.push({
-              id: `overlay-${od.overlayClipId}-${od.startTime.toFixed(1)}`,
-              type: 'overlay',
-              clipId: firstMain.id,
-              slot: firstMain.slot,
-              overlayClipId: od.overlayClipId,
-              startTime: 0,
-              endTime: Math.min(firstMain.duration, od.endTime - od.startTime),
-              parameters: {
-                placement: od.placement,
-                scale: od.scale,
-                opacity: od.opacity,
-              },
-              justification: od.reason,
-            })
-          }
         }
       }
     }
