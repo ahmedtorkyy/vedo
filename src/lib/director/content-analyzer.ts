@@ -367,6 +367,18 @@ const KNOWN_ENTITY_PATTERNS = [
   /(?:[A-Z][a-z]+ (?:Pro|Max|Ultra|Air|Mini|Plus|X|S|XL|LTE|5G|HD|4K))/g,
 ]
 
+const ARABIC_STOP_WORDS = new Set([
+  'في', 'من', 'على', 'الى', 'إلى', 'عن', 'مع', 'كان', 'هذا', 'هذه',
+  'ذلك', 'تلك', 'هو', 'هي', 'هم', 'هن', 'انا', 'نحن', 'ان', 'إن',
+  'ما', 'لا', 'لم', 'لن', 'هل', 'قد', 'لقد', 'اذا', 'إذا', 'لكن',
+  'او', 'أو', 'ثم', 'بعد', 'قبل', 'فوق', 'تحت', 'بين', 'خلال', 'دون',
+  'حتى', 'عند', 'حول', 'كما', 'مثل', 'غير', 'سوى', 'كل', 'بعض', 'اي',
+  'أي', 'ايضا', 'أيضا', 'لذلك', 'لأن', 'حيث', 'بينما', 'الذي', 'التي',
+  'الذين', 'اللذين', 'اللواتي', 'اللائي', 'فهو', 'فهي', 'فهم', 'فهن',
+  'كانت', 'كانوا', 'تكون', 'يكون', 'ليست', 'ليس', 'هل', 'مازال', 'مازالت',
+  'مازالوا', 'انها', 'انه', 'انهم', 'انهما', 'انكما', 'انكن',
+])
+
 function extractSubjects(
   segments: { start: number; end: number; text: string }[],
   fullText: string,
@@ -377,7 +389,8 @@ function extractSubjects(
   for (const pattern of KNOWN_ENTITY_PATTERNS) {
     const matches = [...fullText.matchAll(pattern)]
     for (const m of matches) {
-      knownEntities.push(m[0])
+      const entity = m[0].trim()
+      if (entity.length > 2) knownEntities.push(entity)
     }
   }
 
@@ -386,7 +399,11 @@ function extractSubjects(
       const matches = [...seg.text.matchAll(pattern)]
       for (const m of matches) {
         const candidate = (m[1] ?? '').trim()
-        if (candidate.length > 2 && !/^(the|a|an|this|that|it|and|or|so|for)$/i.test(candidate)) {
+        if (
+          candidate.length > 2 &&
+          !/^(the|a|an|this|that|it|and|or|so|for|in|on|at|to)$/i.test(candidate) &&
+          !ARABIC_STOP_WORDS.has(candidate)
+        ) {
           subjects.push(candidate)
         }
       }
@@ -401,14 +418,28 @@ function extractSubjects(
     const firstWord = words[0].replace(/[^a-zA-Z\u0600-\u06FF]/g, '')
     const secondWord = words[1]?.replace(/[^a-zA-Z\u0600-\u06FF]/g, '')
 
-    if (
-      firstWord.length > 2 &&
-      !/^(the|a|an|so|and|but|or|if|when|while|because|however|therefore)$/i.test(firstWord) &&
-      /^[A-Z\u0600-\u06FF]/.test(firstWord)
-    ) {
-      subjects.push(firstWord)
-      if (secondWord && secondWord.length > 2 && /^[a-z]/.test(secondWord) === false) {
-        subjects.push(firstWord + ' ' + secondWord)
+    if (firstWord.length > 2) {
+      const isEnglishCapital = /^[A-Z]/.test(firstWord)
+      const isArabic = /^[\u0600-\u06FF]/.test(firstWord)
+
+      const isSkipWord = /^(the|a|an|so|and|but|or|if|when|while|because|however|therefore)$/i.test(firstWord)
+      const isArabicSkip = ARABIC_STOP_WORDS.has(firstWord)
+
+      if (isEnglishCapital && !isSkipWord && !isArabic) {
+        subjects.push(firstWord)
+        if (secondWord && secondWord.length > 2 && /^[a-z]/.test(secondWord) === false) {
+          subjects.push(firstWord + ' ' + secondWord)
+        }
+      }
+
+      if (isArabic && !isArabicSkip && !isSkipWord) {
+        const freq = sentences.filter((s) => s.toLowerCase().includes(firstWord.toLowerCase())).length
+        if (freq >= 2) {
+          subjects.push(firstWord)
+          if (secondWord && secondWord.length > 2 && !ARABIC_STOP_WORDS.has(secondWord)) {
+            subjects.push(firstWord + ' ' + secondWord)
+          }
+        }
       }
     }
 
@@ -423,11 +454,14 @@ function extractSubjects(
 
   const bigramFreq: Record<string, { phrase: string; count: number }> = {}
   for (let i = 0; i < sentences.length; i++) {
-    const words = sentences[i].trim().split(/\s+/)
-    for (let j = 0; j < words.length - 1; j++) {
-      const w1 = words[j].replace(/[^a-zA-Z\u0600-\u06FF]/g, '')
-      const w2 = words[j + 1].replace(/[^a-zA-Z\u0600-\u06FF]/g, '')
-      if (w1.length > 2 && w2.length > 2) {
+    const ws = sentences[i].trim().split(/\s+/)
+    for (let j = 0; j < ws.length - 1; j++) {
+      const w1 = ws[j].replace(/[^a-zA-Z\u0600-\u06FF]/g, '')
+      const w2 = ws[j + 1].replace(/[^a-zA-Z\u0600-\u06FF]/g, '')
+      if (
+        w1.length > 2 && w2.length > 2 &&
+        !ARABIC_STOP_WORDS.has(w1) && !ARABIC_STOP_WORDS.has(w2)
+      ) {
         const pair = (w1 + ' ' + w2).toLowerCase()
         if (!bigramFreq[pair]) bigramFreq[pair] = { phrase: w1 + ' ' + w2, count: 0 }
         bigramFreq[pair].count++
@@ -452,8 +486,15 @@ function extractSubjects(
     .sort((a, b) => b[1] - a[1])
     .slice(0, 8)
     .map(([word]) => {
-      const original = allCandidates.find((c) => c.toLowerCase() === word)
-      return original ?? word
+      const multiWordBest = allCandidates.find(
+        (c) => c.toLowerCase() === word && c.includes(' '),
+      )
+      if (multiWordBest) return multiWordBest
+      const entityBest = allCandidates.find(
+        (c) => c.toLowerCase() === word && knownEntities.some((e) => e.toLowerCase() === word),
+      )
+      if (entityBest) return entityBest
+      return allCandidates.find((c) => c.toLowerCase() === word) ?? word
     })
 }
 
@@ -516,10 +557,13 @@ function extractObjects(
 
 export function detectHooks(
   segments: { start: number; end: number; text: string }[],
+  maxStartTime?: number,
 ): HookInfo[] {
   const hooks: HookInfo[] = []
 
   for (const seg of segments) {
+    if (maxStartTime !== undefined && seg.start > maxStartTime) break
+
     const text = seg.text.trim()
     if (!text) continue
 

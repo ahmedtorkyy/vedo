@@ -85,7 +85,7 @@ export function useDirector(projectId: string) {
         clipsA.length === 1 ? clipsA[0]?.fileName : undefined,
       )
 
-      const hooks = detectHooks(combinedSegments)
+      const hooks = detectHooks(combinedSegments, totalDuration * 0.2)
 
       const retention = analyzeRetention(
         combinedSegments,

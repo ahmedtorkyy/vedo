@@ -18,7 +18,7 @@ export interface PlannerInput {
   clipOffsets?: { clipId: string; offsetStart: number; offsetEnd: number }[]
 }
 
-function getClipAtTime(
+export function getClipAtTime(
   clips: { id: string; fileName: string; duration: number; slot: 'A' | 'B' }[],
   clipOffsets: { clipId: string; offsetStart: number; offsetEnd: number }[] | undefined,
   time: number,
@@ -33,6 +33,51 @@ function getClipAtTime(
     }
   }
   return clips.find((c) => c.slot === 'A') ?? null
+}
+
+export function globalToLocal(
+  globalTime: number,
+  clipId: string,
+  clipOffsets: { clipId: string; offsetStart: number; offsetEnd: number }[] | undefined,
+): number {
+  const offset = clipOffsets?.find((o) => o.clipId === clipId)?.offsetStart ?? 0
+  return Math.max(0, globalTime - offset)
+}
+
+export function splitRegionAcrossClips(
+  globalStart: number,
+  globalEnd: number,
+  clips: { id: string; fileName: string; duration: number; slot: 'A' | 'B' }[],
+  clipOffsets: { clipId: string; offsetStart: number; offsetEnd: number }[] | undefined,
+): { clipId: string; localStart: number; localEnd: number }[] {
+  if (!clipOffsets || clipOffsets.length === 0) {
+    const clip = clips.find((c) => c.slot === 'A' && c.duration >= globalStart)
+    if (clip) {
+      return [{
+        clipId: clip.id,
+        localStart: globalStart,
+        localEnd: Math.min(clip.duration, globalEnd),
+      }]
+    }
+    return []
+  }
+
+  const result: { clipId: string; localStart: number; localEnd: number }[] = []
+
+  for (const offset of clipOffsets) {
+    const regionStartInClip = Math.max(globalStart, offset.offsetStart)
+    const regionEndInClip = Math.min(globalEnd, offset.offsetEnd)
+
+    if (regionStartInClip < regionEndInClip) {
+      result.push({
+        clipId: offset.clipId,
+        localStart: regionStartInClip - offset.offsetStart,
+        localEnd: regionEndInClip - offset.offsetStart,
+      })
+    }
+  }
+
+  return result
 }
 
 export function createEditPlan(input: PlannerInput): EditPlan {
@@ -70,39 +115,42 @@ export function createEditPlan(input: PlannerInput): EditPlan {
   }
 
   for (const region of input.retention.lowEnergyRegions) {
-    const targetClip = getClipAtTime(input.clips, input.clipOffsets, region.start)
-    if (targetClip) {
-      const localStart = region.start - (input.clipOffsets?.find((o) => o.clipId === targetClip.id)?.offsetStart ?? 0)
-      const localEnd = region.end - (input.clipOffsets?.find((o) => o.clipId === targetClip.id)?.offsetStart ?? 0)
+    const splits = splitRegionAcrossClips(region.start, region.end, input.clips, input.clipOffsets)
+    for (const split of splits) {
       decisions.push({
-        id: `trim-${region.start.toFixed(1)}-${region.end.toFixed(1)}`,
+        id: `trim-${split.clipId}-${split.localStart.toFixed(1)}-${split.localEnd.toFixed(1)}`,
         type: 'trim',
-        clipId: targetClip.id,
-        slot: targetClip.slot,
-        startTime: Math.max(0, localStart),
-        endTime: Math.min(targetClip.duration, localEnd),
+        clipId: split.clipId,
+        slot: 'A',
+        startTime: split.localStart,
+        endTime: split.localEnd,
         parameters: {},
-        justification: `Removed ${(region.duration).toFixed(1)}s of dead air to improve pacing`,
+        justification: `Removed ${(split.localEnd - split.localStart).toFixed(1)}s of dead air to improve pacing`,
       })
     }
   }
 
   if (input.contentAnalysis.structure.hook && style.zoom !== 'soft') {
     const hookStart = input.contentAnalysis.structure.hook.start
-    const hookClip = getClipAtTime(input.clips, input.clipOffsets, hookStart)
-    if (hookClip) {
-      const hookLocalStart = hookStart - (input.clipOffsets?.find((o) => o.clipId === hookClip.id)?.offsetStart ?? 0)
-      const hookLocalEnd = input.contentAnalysis.structure.hook.end - (input.clipOffsets?.find((o) => o.clipId === hookClip.id)?.offsetStart ?? 0)
-      decisions.push({
-        id: `zoom-hook-${hookClip.id}`,
-        type: 'zoom',
-        clipId: hookClip.id,
-        slot: hookClip.slot,
-        startTime: Math.max(0, hookLocalStart),
-        endTime: Math.min(hookClip.duration, hookLocalEnd),
-        parameters: { intensity: style.zoom, duration: 1.5 },
-        justification: `Subtle zoom on hook to draw viewer attention`,
-      })
+    const hookEnd = input.contentAnalysis.structure.hook.end
+    const hookSplits = splitRegionAcrossClips(hookStart, hookEnd, input.clips, input.clipOffsets)
+
+    if (hookSplits.length > 0) {
+      for (const split of hookSplits) {
+        decisions.push({
+          id: `zoom-hook-${split.clipId}-${split.localStart.toFixed(1)}`,
+          type: 'zoom',
+          clipId: split.clipId,
+          slot: 'A',
+          startTime: split.localStart,
+          endTime: Math.min(
+            split.localEnd,
+            split.localStart + 1.5,
+          ),
+          parameters: { intensity: style.zoom, duration: 1.5 },
+          justification: `Subtle zoom on hook to draw viewer attention`,
+        })
+      }
     }
   }
 
@@ -110,14 +158,15 @@ export function createEditPlan(input: PlannerInput): EditPlan {
     if (style.motionIntensity < 0.3) continue
     const momentClip = getClipAtTime(input.clips, input.clipOffsets, moment.time)
     if (momentClip) {
-      const momentLocalStart = moment.time - (input.clipOffsets?.find((o) => o.clipId === momentClip.id)?.offsetStart ?? 0)
+      const localStart = globalToLocal(moment.time, momentClip.id, input.clipOffsets)
+      const clipDuration = momentClip.duration
       decisions.push({
         id: `emphasis-${moment.time.toFixed(1)}`,
         type: 'zoom',
         clipId: momentClip.id,
-        slot: momentClip.slot,
-        startTime: Math.max(0, momentLocalStart - 0.3),
-        endTime: Math.min(momentClip.duration, momentLocalStart + 3),
+        slot: 'A',
+        startTime: Math.max(0, localStart - 0.3),
+        endTime: Math.min(clipDuration, localStart + 3),
         parameters: { intensity: style.zoom, duration: 2 },
         justification: `Emphasize: ${moment.reason}`,
       })
@@ -125,17 +174,15 @@ export function createEditPlan(input: PlannerInput): EditPlan {
   }
 
   for (const region of input.retention.repetitiveRegions) {
-    const targetClip = getClipAtTime(input.clips, input.clipOffsets, region.start)
-    if (targetClip) {
-      const localStart = region.start - (input.clipOffsets?.find((o) => o.clipId === targetClip.id)?.offsetStart ?? 0)
-      const localEnd = region.end - (input.clipOffsets?.find((o) => o.clipId === targetClip.id)?.offsetStart ?? 0)
+    const splits = splitRegionAcrossClips(region.start, region.end, input.clips, input.clipOffsets)
+    for (const split of splits) {
       decisions.push({
-        id: `trim-repeat-${region.start.toFixed(1)}`,
+        id: `trim-repeat-${split.clipId}-${split.localStart.toFixed(1)}`,
         type: 'trim',
-        clipId: targetClip.id,
-        slot: targetClip.slot,
-        startTime: Math.max(0, localStart),
-        endTime: Math.min(targetClip.duration, localEnd),
+        clipId: split.clipId,
+        slot: 'A',
+        startTime: split.localStart,
+        endTime: split.localEnd,
         parameters: {},
         justification: `Removed repetitive content`,
       })
@@ -160,16 +207,18 @@ export function createEditPlan(input: PlannerInput): EditPlan {
       })
 
       for (const od of overlayDecisions) {
-        const targetClip = mainClips.find((c) => c.id === od.targetClipId)
+        const targetClip = getClipAtTime(input.clips, input.clipOffsets, od.startTime)
         if (targetClip) {
+          const localStart = globalToLocal(od.startTime, targetClip.id, input.clipOffsets)
+          const localEnd = globalToLocal(od.endTime, targetClip.id, input.clipOffsets)
           decisions.push({
             id: `overlay-${od.overlayClipId}-${od.startTime.toFixed(1)}`,
             type: 'overlay',
             clipId: targetClip.id,
             slot: targetClip.slot,
             overlayClipId: od.overlayClipId,
-            startTime: od.startTime,
-            endTime: od.endTime,
+            startTime: Math.max(0, localStart),
+            endTime: Math.min(targetClip.duration, localEnd),
             parameters: {
               placement: od.placement,
               scale: od.scale,
@@ -186,8 +235,8 @@ export function createEditPlan(input: PlannerInput): EditPlan {
               clipId: firstMain.id,
               slot: firstMain.slot,
               overlayClipId: od.overlayClipId,
-              startTime: od.startTime,
-              endTime: od.endTime,
+              startTime: 0,
+              endTime: Math.min(firstMain.duration, od.endTime - od.startTime),
               parameters: {
                 placement: od.placement,
                 scale: od.scale,

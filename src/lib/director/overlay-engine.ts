@@ -1,5 +1,4 @@
 import type { ContentAnalysis, OverlayPlacement, OverlayDecision, StyleProfile, InstructionOverrides } from './types'
-import type { Clip } from '../../types'
 
 interface OverlayInput {
   overlayClip: { id: string; fileName: string; duration: number }
@@ -35,6 +34,11 @@ function extractOverlayKeywords(fileName: string): string[] {
     .filter((w) => w.length > 2)
 }
 
+export function matchKeyword(text: string, keyword: string): boolean {
+  const escaped = keyword.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
+  return new RegExp(`\\b${escaped}\\b`, 'i').test(text)
+}
+
 function findRelevantTimeRange(
   keywords: string[],
   segments: { start: number; end: number; text: string }[],
@@ -49,25 +53,25 @@ function findRelevantTimeRange(
     let score = 0
 
     for (const kw of keywords) {
-      if (text.includes(kw)) {
+      if (matchKeyword(text, kw)) {
         score += kw.length > 4 ? 3 : 1
       }
     }
 
     for (const subject of contentAnalysis.keySubjects) {
-      if (text.includes(subject.toLowerCase())) {
+      if (matchKeyword(text, subject)) {
         score += 2
       }
     }
 
     for (const obj of contentAnalysis.keyObjects) {
-      if (text.includes(obj.toLowerCase())) {
+      if (matchKeyword(text, obj)) {
         score += 2
       }
     }
 
     for (const kw of contentAnalysis.keywords) {
-      if (text.includes(kw.toLowerCase())) {
+      if (matchKeyword(text, kw)) {
         score += 1
       }
     }
@@ -162,7 +166,6 @@ export function determineOverlayDecisions(input: OverlayInput): OverlayDecision[
   if (relevantRange) {
     decisions.push({
       overlayClipId: input.overlayClip.id,
-      targetClipId: input.mainClips[0]?.id ?? '',
       startTime: relevantRange.start,
       endTime: Math.min(relevantRange.end, relevantRange.start + input.overlayClip.duration),
       placement,
@@ -174,7 +177,6 @@ export function determineOverlayDecisions(input: OverlayInput): OverlayDecision[
     const moment = input.contentAnalysis.importantMoments[0]
     decisions.push({
       overlayClipId: input.overlayClip.id,
-      targetClipId: input.mainClips[0]?.id ?? '',
       startTime: Math.max(0, moment.time - 0.5),
       endTime: Math.min(input.timelineDuration, moment.time + input.overlayClip.duration),
       placement,
@@ -186,7 +188,6 @@ export function determineOverlayDecisions(input: OverlayInput): OverlayDecision[
     const midPoint = input.timelineDuration * 0.3
     decisions.push({
       overlayClipId: input.overlayClip.id,
-      targetClipId: input.mainClips[0]?.id ?? '',
       startTime: midPoint,
       endTime: Math.min(input.timelineDuration, midPoint + input.overlayClip.duration),
       placement,

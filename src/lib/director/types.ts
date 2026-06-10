@@ -88,7 +88,6 @@ export type OverlayPlacement = 'center' | 'left' | 'right' | 'pip' | 'fullscreen
 
 export interface OverlayDecision {
   overlayClipId: string
-  targetClipId: string
   startTime: number
   endTime: number
   placement: OverlayPlacement
