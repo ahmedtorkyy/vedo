@@ -46,31 +46,58 @@ self.onmessage = async (e: MessageEvent) => {
       return
     }
 
-    const { audio } = payload as { audio: Float32Array; sampleRate: number }
+    const { audio, wordTimestamps } = payload as { audio: Float32Array; sampleRate: number; wordTimestamps?: boolean }
 
     try {
-      const result = await pipeline(audio, {
-        return_timestamps: true,
-        chunk_length_s: 30,
-        stride_length_s: 5,
-      })
+      if (wordTimestamps) {
+        const result = await pipeline(audio, {
+          return_timestamps: 'word',
+          chunk_length_s: 30,
+          stride_length_s: 5,
+        })
 
-      const raw: { timestamp?: [number, number]; text?: string; transcript?: string }[] =
-        result.chunks ?? result.segments ?? []
+        const raw: { timestamp?: [number, number]; text?: string; word?: string; transcript?: string }[] =
+          result.chunks ?? result.segments ?? []
 
-      const segments = raw.map((chunk) => ({
-        start: typeof chunk.timestamp?.[0] === 'number' ? chunk.timestamp[0] : 0,
-        end: typeof chunk.timestamp?.[1] === 'number' ? chunk.timestamp[1] : 0,
-        text: (chunk.text ?? chunk.transcript ?? '').trim(),
-      }))
+        const words = raw.map((chunk) => ({
+          word: (chunk.word ?? chunk.text ?? '').trim(),
+          start: typeof chunk.timestamp?.[0] === 'number' ? chunk.timestamp[0] : 0,
+          end: typeof chunk.timestamp?.[1] === 'number' ? chunk.timestamp[1] : 0,
+        })).filter((w) => w.word.length > 0)
 
-      const language = typeof result.language === 'string' ? result.language : 'en'
+        const segments = raw.map((chunk) => ({
+          start: typeof chunk.timestamp?.[0] === 'number' ? chunk.timestamp[0] : 0,
+          end: typeof chunk.timestamp?.[1] === 'number' ? chunk.timestamp[1] : 0,
+          text: (chunk.text ?? chunk.transcript ?? '').trim(),
+        })).filter((s) => s.text.length > 0)
 
-      self.postMessage({
-        type: 'result',
-        segments,
-        language,
-      })
+        const language = typeof result.language === 'string' ? result.language : 'en'
+
+        self.postMessage({ type: 'result', segments, words, language })
+      } else {
+        const result = await pipeline(audio, {
+          return_timestamps: true,
+          chunk_length_s: 30,
+          stride_length_s: 5,
+        })
+
+        const raw: { timestamp?: [number, number]; text?: string; transcript?: string }[] =
+          result.chunks ?? result.segments ?? []
+
+        const segments = raw.map((chunk) => ({
+          start: typeof chunk.timestamp?.[0] === 'number' ? chunk.timestamp[0] : 0,
+          end: typeof chunk.timestamp?.[1] === 'number' ? chunk.timestamp[1] : 0,
+          text: (chunk.text ?? chunk.transcript ?? '').trim(),
+        })).filter((s) => s.text.length > 0)
+
+        const language = typeof result.language === 'string' ? result.language : 'en'
+
+        self.postMessage({
+          type: 'result',
+          segments,
+          language,
+        })
+      }
     } catch (err) {
       self.postMessage({ type: 'error', error: String(err) })
     }

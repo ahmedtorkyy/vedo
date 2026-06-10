@@ -49,6 +49,50 @@ export interface TranscriptionResult {
   error?: string
 }
 
+export interface SilenceSegment {
+  start: number
+  end: number
+  duration: number
+}
+
+export interface SmartCutOptions {
+  enabled: boolean
+  aggressiveness: 'low' | 'medium' | 'high'
+  customThreshold?: number
+  customMinDuration?: number
+}
+
+export interface FillerWordOccurrence {
+  word: string
+  start: number
+  end: number
+  duration: number
+}
+
+export interface TimelineMarker {
+  id: string
+  clipId: string
+  time: number
+  type: 'silence-start' | 'silence-end' | 'filler-word' | 'low-energy' | 'manual'
+  label: string
+}
+
+export interface AnalysisResult {
+  clipId: string
+  status: 'idle' | 'analyzing' | 'done' | 'error'
+  silenceSegments: SilenceSegment[]
+  fillerWords: FillerWordOccurrence[]
+  repeatedPhrases: string[]
+  lowEnergySections: SilenceSegment[]
+  error?: string
+}
+
+export interface WordTimestamp {
+  word: string
+  start: number
+  end: number
+}
+
 export interface AudioCleansingOptions {
   noiseReduction: boolean
   silenceTrim: boolean

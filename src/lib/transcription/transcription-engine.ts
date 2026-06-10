@@ -57,15 +57,20 @@ export async function loadTranscriptionModel(modelKey: ModelKey = 'whisper-tiny'
 export async function transcribeAudio(
   audioData: Float32Array,
   sampleRate: number,
-): Promise<{ segments: TranscriptionSegment[]; language: string }> {
+  wordTimestamps?: boolean,
+): Promise<{ segments: TranscriptionSegment[]; language: string; words?: { word: string; start: number; end: number }[] }> {
   const w = getWorker()
 
-  return new Promise<{ segments: TranscriptionSegment[]; language: string }>((resolve, reject) => {
+  return new Promise<{ segments: TranscriptionSegment[]; language: string; words?: { word: string; start: number; end: number }[] }>((resolve, reject) => {
     const handler = (e: MessageEvent) => {
       const { type } = e.data
       if (type === 'result') {
         w.removeEventListener('message', handler)
-        resolve({ segments: e.data.segments, language: e.data.language ?? 'en' })
+        resolve({
+          segments: e.data.segments,
+          language: e.data.language ?? 'en',
+          words: e.data.words,
+        })
       }
       if (type === 'error') {
         w.removeEventListener('message', handler)
@@ -73,7 +78,7 @@ export async function transcribeAudio(
       }
     }
     w.addEventListener('message', handler)
-    w.postMessage({ type: 'transcribe', payload: { audio: audioData, sampleRate } }, [audioData.buffer])
+    w.postMessage({ type: 'transcribe', payload: { audio: audioData, sampleRate, wordTimestamps } }, [audioData.buffer])
   })
 }
 

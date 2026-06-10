@@ -6,6 +6,7 @@ import { ProjectStorage } from '../opfs'
 import { useClipStore } from './clip-store'
 import { useHistoryStore } from './history-store'
 import { useTranscriptionStore } from '../transcription/transcription-store'
+import { useEditingStore } from '../editing/editing-store'
 
 interface ProjectStore {
   projects: Project[]
@@ -50,6 +51,8 @@ export const useProjectStore = create<ProjectStore>()(
         useClipStore.getState().setConcatStatus('idle')
 
         useTranscriptionStore.getState().clearAll()
+
+        useEditingStore.getState().clearAll()
 
         useHistoryStore.getState().clear()
 

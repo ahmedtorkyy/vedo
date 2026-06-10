@@ -1,5 +1,6 @@
 import { useClipStore } from '../state/clip-store'
 import type { Clip, AudioCleansingOptions } from '../../types'
+import type { SilenceSegment } from '../../types'
 
 let worker: Worker | null = null
 let isRunning = false
@@ -11,6 +12,7 @@ type PendingOp = {
 
 let pendingConcat: PendingOp | null = null
 let pendingAudio: PendingOp | null = null
+let pendingSmartCut: PendingOp | null = null
 
 function getWorker(): Worker {
   if (!worker) {
@@ -76,6 +78,18 @@ function handleWorkerMessage(e: MessageEvent) {
     pendingAudio = null
     return
   }
+
+  if (type === 'smartcut-done') {
+    pendingSmartCut?.resolve(e.data.outputFilename)
+    pendingSmartCut = null
+    return
+  }
+
+  if (type === 'smartcut-error') {
+    pendingSmartCut?.reject(new Error(e.data.error ?? 'Smart cut failed'))
+    pendingSmartCut = null
+    return
+  }
 }
 
 export async function extractAudio(projectId: string, inputName: string): Promise<string> {
@@ -129,6 +143,22 @@ export async function concatClips(
         clips: clips.map((c) => ({ name: c.opfsFilename })),
       },
     })
+  })
+}
+
+export async function smartCutVideo(
+  projectId: string,
+  inputName: string,
+  segments: { start: number; end: number }[],
+  totalDuration: number,
+): Promise<string> {
+  const outputName = `_smartcut_${Date.now()}.mp4`
+  getWorker().postMessage({
+    type: 'smart-cut',
+    payload: { projectId, inputName, outputName, segments, totalDuration },
+  })
+  return new Promise<string>((resolve, reject) => {
+    pendingSmartCut = { resolve, reject }
   })
 }
 

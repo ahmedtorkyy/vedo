@@ -1,1 +1,1 @@
-export { loadFFmpeg, concatClips, terminateWorker, extractAudio, cleanAudio } from './concat'
+export { loadFFmpeg, concatClips, terminateWorker, extractAudio, cleanAudio, smartCutVideo } from './concat'

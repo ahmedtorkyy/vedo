@@ -228,4 +228,72 @@ self.onmessage = async (e: MessageEvent) => {
       self.postMessage({ type: 'clean-error', error: String(err) })
     }
   }
+
+  if (type === 'smart-cut') {
+    try {
+      const instance = await getFFmpeg()
+      const { projectId, inputName, outputName, segments, totalDuration } = payload as {
+        projectId: string; inputName: string; outputName: string
+        segments: { start: number; end: number }[]
+        totalDuration: number
+      }
+
+      const raw = await readOpfsFile(projectId, inputName)
+      await instance.writeFile(inputName, raw)
+
+      const kept: { start: number; end: number }[] = []
+      let cursor = 0
+      for (const seg of segments) {
+        if (seg.start > cursor) {
+          kept.push({ start: cursor, end: seg.start })
+        }
+        cursor = seg.end
+      }
+      if (cursor < totalDuration) {
+        kept.push({ start: cursor, end: totalDuration })
+      }
+
+      if (kept.length === 0) {
+        self.postMessage({ type: 'smartcut-error', error: 'No content remains after removing silence' })
+        return
+      }
+
+      const selectExpr = kept
+        .map((k) => `between(t,${k.start.toFixed(3)},${k.end.toFixed(3)})`)
+        .join('+')
+
+      const audioFilter = `aselect='${selectExpr}',asetpts=N/SR/TB`
+      const videoFilter = `select='${selectExpr}',setpts=N/FRAME_RATE/TB`
+
+      await instance.exec([
+        '-i', inputName,
+        '-filter_complex',
+        `[0:v]${videoFilter}[v];[0:a]${audioFilter}[a]`,
+        '-map', '[v]',
+        '-map', '[a]',
+        '-c:v', 'libx264',
+        '-preset', 'fast',
+        '-crf', '22',
+        '-c:a', 'aac',
+        '-b:a', '128k',
+        '-f', 'mp4',
+        outputName,
+      ])
+
+      const result = await instance.readFile(outputName) as Uint8Array
+      const copy = new Uint8Array(result.byteLength)
+      copy.set(result)
+      await writeOpfsFile(projectId, outputName, copy)
+
+      await instance.deleteFile(inputName)
+      await instance.deleteFile(outputName)
+
+      purgeMemfs()
+
+      self.postMessage({ type: 'smartcut-done', outputFilename: outputName })
+    } catch (err) {
+      purgeMemfs()
+      self.postMessage({ type: 'smartcut-error', error: String(err) })
+    }
+  }
 }
