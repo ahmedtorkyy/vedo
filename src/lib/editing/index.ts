@@ -13,3 +13,5 @@ export {
   buildTrimCommand,
   getEffectiveOptions,
 } from './smart-cut'
+export { recommendModel, detectDeviceTierSync } from './device-capability'
+export type { DeviceTier, ModelKey } from './device-capability'

@@ -82,6 +82,34 @@ export async function transcribeAudio(
   })
 }
 
+export async function transcribeFromOpfs(
+  projectId: string,
+  opfsFilename: string,
+  wordTimestamps?: boolean,
+): Promise<{ segments: TranscriptionSegment[]; language: string; words?: { word: string; start: number; end: number }[] }> {
+  const w = getWorker()
+
+  return new Promise<{ segments: TranscriptionSegment[]; language: string; words?: { word: string; start: number; end: number }[] }>((resolve, reject) => {
+    const handler = (e: MessageEvent) => {
+      const { type } = e.data
+      if (type === 'result') {
+        w.removeEventListener('message', handler)
+        resolve({
+          segments: e.data.segments,
+          language: e.data.language ?? 'en',
+          words: e.data.words,
+        })
+      }
+      if (type === 'error') {
+        w.removeEventListener('message', handler)
+        reject(new Error(e.data.error))
+      }
+    }
+    w.addEventListener('message', handler)
+    w.postMessage({ type: 'transcribe-from-opfs', payload: { projectId, opfsFilename, wordTimestamps } })
+  })
+}
+
 export function decodeWavToF32(buffer: ArrayBuffer): { audio: Float32Array; sampleRate: number } | null {
   const view = new DataView(buffer)
   const header = readWavHeader(view)

@@ -1,16 +1,17 @@
 import { useCallback, useRef, useState } from 'react'
 import { useClipStore } from '../lib/state'
-import { ProjectStorage } from '../lib/opfs'
 import { extractAudio, cleanAudio } from '../lib/ffmpeg'
-import { loadTranscriptionModel, transcribeAudio, decodeWavToF32 } from '../lib/transcription'
+import { loadTranscriptionModel, transcribeFromOpfs, transcribeAudio, decodeWavToF32 } from '../lib/transcription'
 import { useTranscriptionStore } from '../lib/transcription'
+import { ProjectStorage } from '../lib/opfs'
+import { recommendModel } from '../lib/editing/device-capability'
 import type { AudioCleansingOptions } from '../types'
 
 type ModelKey = 'whisper-tiny' | 'whisper-base' | 'whisper-small'
 
 export function useTranscription() {
   const transcribingRef = useRef(false)
-  const [modelKey, setModelKey] = useState<ModelKey>('whisper-tiny')
+  const [modelKey, setModelKey] = useState<ModelKey>(recommendModel())
 
   const ensureModel = useCallback(async () => {
     await loadTranscriptionModel(modelKey)
@@ -40,17 +41,7 @@ export function useTranscription() {
 
       await ensureModel()
 
-      const file = await ProjectStorage.getFile(projectId, audioFile)
-      const buffer = await file.arrayBuffer()
-      const decoded = decodeWavToF32(buffer)
-
-      if (!decoded) {
-        store.setError(clipId, 'Failed to decode audio')
-        transcribingRef.current = false
-        return
-      }
-
-      const result = await transcribeAudio(decoded.audio, decoded.sampleRate)
+      const result = await transcribeFromOpfs(projectId, audioFile)
 
       store.setSegments(clipId, result.segments, result.language)
     } catch (err) {
@@ -84,15 +75,7 @@ export function useTranscription() {
 
       await ensureModel()
 
-      const file = await ProjectStorage.getFile(projectId, cleaned)
-      const buffer = await file.arrayBuffer()
-      const decoded = decodeWavToF32(buffer)
-      if (!decoded) {
-        store.setError(clipId, 'Failed to decode cleaned audio')
-        return
-      }
-
-      const result = await transcribeAudio(decoded.audio, decoded.sampleRate)
+      const result = await transcribeFromOpfs(projectId, cleaned)
       store.setSegments(clipId, result.segments, result.language)
     } catch (err) {
       store.setError(clipId, err instanceof Error ? err.message : 'Audio cleansing failed')

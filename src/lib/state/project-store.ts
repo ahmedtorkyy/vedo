@@ -50,9 +50,9 @@ export const useProjectStore = create<ProjectStore>()(
         useClipStore.getState().removeProjectData(id)
         useClipStore.getState().setConcatStatus('idle')
 
-        useTranscriptionStore.getState().clearAll()
+        useTranscriptionStore.getState().removeProjectData(id)
 
-        useEditingStore.getState().clearAll()
+        useEditingStore.getState().removeProjectData(id)
 
         useHistoryStore.getState().clear()
 

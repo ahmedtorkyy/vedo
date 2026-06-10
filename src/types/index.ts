@@ -53,6 +53,8 @@ export interface SilenceSegment {
   start: number
   end: number
   duration: number
+  confidence: number
+  rms: number
 }
 
 export interface SmartCutOptions {

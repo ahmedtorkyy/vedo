@@ -1,6 +1,7 @@
 import { create } from 'zustand'
 import { persist } from 'zustand/middleware'
 import type { SilenceSegment, SmartCutOptions, TimelineMarker, FillerWordOccurrence, AnalysisResult } from '../../types'
+import { useClipStore } from '../state/clip-store'
 
 interface EditingStore {
   analysis: Record<string, AnalysisResult>
@@ -22,6 +23,7 @@ interface EditingStore {
   setSmartCutOptions: (clipId: string, options: SmartCutOptions) => void
 
   clearClipData: (clipId: string) => void
+  removeProjectData: (projectId: string) => void
   clearAll: () => void
 }
 
@@ -133,6 +135,23 @@ export const useEditingStore = create<EditingStore>()(
           delete nextMarkers[clipId]
           const nextOptions = { ...s.smartCutOptions }
           delete nextOptions[clipId]
+          return { analysis: nextAnalysis, markers: nextMarkers, smartCutOptions: nextOptions }
+        }),
+
+      removeProjectData: (projectId) =>
+        set((s) => {
+          const { getSlotClips } = useClipStore.getState()
+          const clipsA = getSlotClips(projectId, 'A')
+          const clipsB = getSlotClips(projectId, 'B')
+          const allClipIds = [...clipsA, ...clipsB].map((c) => c.id)
+          const nextAnalysis = { ...s.analysis }
+          const nextMarkers = { ...s.markers }
+          const nextOptions = { ...s.smartCutOptions }
+          for (const clipId of allClipIds) {
+            delete nextAnalysis[clipId]
+            delete nextMarkers[clipId]
+            delete nextOptions[clipId]
+          }
           return { analysis: nextAnalysis, markers: nextMarkers, smartCutOptions: nextOptions }
         }),
 

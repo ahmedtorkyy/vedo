@@ -1,4 +1,4 @@
-import type { FillerWordOccurrence } from '../../types'
+import type { FillerWordOccurrence, SilenceSegment } from '../../types'
 
 const FILLER_WORDS = new Set([
   'um', 'uh', 'ah', 'er', 'hmm', 'like', 'you know', 'actually', 'basically',
@@ -72,7 +72,7 @@ export function detectLowEnergySections(
   audio: Float32Array,
   sampleRate: number,
   options: LowEnergyOptions = {},
-): { start: number; end: number; duration: number }[] {
+): SilenceSegment[] {
   const threshold = options.threshold ?? 0.005
   const minDuration = options.minDuration ?? 1.0
   const windowSize = Math.floor(0.05 * sampleRate)
@@ -89,7 +89,7 @@ export function detectLowEnergySections(
 
   const maxEnergy = Math.max(...energies, 0.0001)
 
-  const sections: { start: number; end: number; duration: number }[] = []
+  const sections: SilenceSegment[] = []
   let lowStart: number | null = null
 
   for (let i = 0; i < energies.length; i++) {
@@ -100,7 +100,7 @@ export function detectLowEnergySections(
         const end = i * windowSize / sampleRate
         const duration = end - lowStart
         if (duration >= minDuration) {
-          sections.push({ start: lowStart, end, duration })
+          sections.push({ start: lowStart, end, duration, confidence: 1, rms: energies[i - 1] ?? 0 })
         }
         lowStart = null
       }
@@ -111,7 +111,7 @@ export function detectLowEnergySections(
     const end = audio.length / sampleRate
     const duration = end - lowStart
     if (duration >= minDuration) {
-      sections.push({ start: lowStart, end, duration })
+      sections.push({ start: lowStart, end, duration, confidence: 1, rms: 0 })
     }
   }
 

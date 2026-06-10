@@ -3,9 +3,11 @@ import { useClipStore } from '../../lib/state'
 import { useTranscriptionStore, getAvailableModels } from '../../lib/transcription'
 import { useTranscription } from '../../hooks/useTranscription'
 import { TranscriptionSegmentRow } from './TranscriptionSegment'
+import { recommendModel } from '../../lib/editing'
 import type { AudioCleansingOptions } from '../../types'
 
 const MODELS = getAvailableModels()
+const RECOMMENDED = recommendModel()
 
 interface TranscriptionPanelProps {
   projectId: string
@@ -66,18 +68,34 @@ export function TranscriptionPanel({ projectId }: TranscriptionPanelProps) {
       </div>
 
       <div className="space-y-1">
-        <label htmlFor="model-select" className="text-xs text-gray-500">Model</label>
-        <select
-          id="model-select"
-          value={modelKey}
-          onChange={(e) => setModelKey(e.target.value as typeof modelKey)}
-          className="w-full rounded-md border border-gray-600 bg-gray-800 px-3 py-2 text-sm text-gray-200 focus:outline-none focus:ring-2 focus:ring-sky-500"
-          aria-label="Select transcription model"
-        >
-          {MODELS.map((m) => (
-            <option key={m.key} value={m.key}>{m.label}</option>
-          ))}
-        </select>
+        <label htmlFor="model-select" className="text-xs text-gray-500">AI Model</label>
+        <div className="flex items-center gap-2">
+          <select
+            id="model-select"
+            value={modelKey}
+            onChange={(e) => setModelKey(e.target.value as typeof modelKey)}
+            className="w-full rounded-md border border-gray-600 bg-gray-800 px-3 py-2 text-sm text-gray-200 focus:outline-none focus:ring-2 focus:ring-sky-500"
+            aria-label="Select transcription model"
+          >
+            {MODELS.map((m) => (
+              <option key={m.key} value={m.key}>
+                {m.key === 'whisper-tiny' ? 'Fast (recommended)' :
+                 m.key === 'whisper-base' ? 'Balanced' :
+                 'Best accuracy'}
+              </option>
+            ))}
+          </select>
+          {modelKey !== RECOMMENDED && (
+            <button
+              type="button"
+              onClick={() => setModelKey(RECOMMENDED as typeof modelKey)}
+              className="shrink-0 rounded bg-emerald-800 px-2 py-1 text-[10px] text-emerald-200 hover:bg-emerald-700 focus:outline-none focus:ring-2 focus:ring-emerald-500"
+              aria-label={`Switch to recommended model`}
+            >
+              Use recommended
+            </button>
+          )}
+        </div>
       </div>
 
       {selectedClipId && (
