@@ -1,15 +1,16 @@
 import { useClipStore } from '../state/clip-store'
-import type { Clip } from '../../types'
+import type { Clip, AudioCleansingOptions } from '../../types'
 
 let worker: Worker | null = null
 let isRunning = false
 
-type ResolveReject = {
+type PendingOp = {
   resolve: (outputFilename: string) => void
   reject: (err: Error) => void
 }
 
-let pendingConcat: ResolveReject | null = null
+let pendingConcat: PendingOp | null = null
+let pendingAudio: PendingOp | null = null
 
 function getWorker(): Worker {
   if (!worker) {
@@ -24,6 +25,8 @@ function handleWorkerError(err: ErrorEvent): void {
   useClipStore.getState().setConcatStatus('error')
   pendingConcat?.reject(new Error(err.message ?? 'Unknown worker error'))
   pendingConcat = null
+  pendingAudio?.reject(new Error(err.message ?? 'Unknown worker error'))
+  pendingAudio = null
   isRunning = false
 }
 
@@ -61,6 +64,44 @@ function handleWorkerMessage(e: MessageEvent) {
     isRunning = false
     return
   }
+
+  if (type === 'audio-extracted' || type === 'audio-cleaned') {
+    pendingAudio?.resolve(e.data.outputName)
+    pendingAudio = null
+    return
+  }
+
+  if (type === 'extract-error' || type === 'clean-error') {
+    pendingAudio?.reject(new Error(e.data.error ?? 'Audio operation failed'))
+    pendingAudio = null
+    return
+  }
+}
+
+export async function extractAudio(projectId: string, inputName: string): Promise<string> {
+  const outputName = `_audio_${Date.now()}.wav`
+  getWorker().postMessage({
+    type: 'extract-audio',
+    payload: { projectId, inputName, outputName },
+  })
+  return new Promise<string>((resolve, reject) => {
+    pendingAudio = { resolve, reject }
+  })
+}
+
+export async function cleanAudio(
+  projectId: string,
+  inputName: string,
+  options: AudioCleansingOptions,
+): Promise<string> {
+  const outputName = `_cleaned_${Date.now()}.wav`
+  getWorker().postMessage({
+    type: 'clean-audio',
+    payload: { projectId, inputName, outputName, options },
+  })
+  return new Promise<string>((resolve, reject) => {
+    pendingAudio = { resolve, reject }
+  })
 }
 
 export async function loadFFmpeg(): Promise<void> {

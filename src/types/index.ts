@@ -35,6 +35,26 @@ export interface UploadProgressEntry {
   error?: string
 }
 
+export interface TranscriptionSegment {
+  start: number
+  end: number
+  text: string
+}
+
+export interface TranscriptionResult {
+  clipId: string
+  status: 'idle' | 'extracting' | 'transcribing' | 'done' | 'error'
+  segments: TranscriptionSegment[]
+  language?: string
+  error?: string
+}
+
+export interface AudioCleansingOptions {
+  noiseReduction: boolean
+  silenceTrim: boolean
+  threshold?: number
+}
+
 export const SUPPORTED_MIME_TYPES = new Set([
   'video/mp4', 'video/webm', 'video/ogg', 'video/quicktime',
   'video/x-msvideo', 'video/x-matroska',

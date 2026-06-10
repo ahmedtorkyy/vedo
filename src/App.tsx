@@ -5,10 +5,11 @@ import { useKeyboardShortcuts } from './hooks/useKeyboardShortcuts'
 import { MainLayout, Sidebar } from './components/layout'
 import { SlotA, SlotB } from './components/ingestion'
 import { PreviewPlayer } from './components/player'
+import { TranscriptionPanel } from './components/transcription'
 import { AriaAnnouncerProvider, useAriaAnnouncer } from './components/accessibility/AriaAnnouncer'
 import { saveSessionSnapshot, restoreSession } from './lib/session/session-recovery'
 
-type WorkspaceTab = 'slota' | 'slotb' | 'preview'
+type WorkspaceTab = 'slota' | 'slotb' | 'preview' | 'transcription'
 const workspaceRef = { current: null as HTMLDivElement | null }
 
 function Workspace({ onConcatNeeded }: { onConcatNeeded?: (projectId: string) => void }) {
@@ -66,6 +67,7 @@ function Workspace({ onConcatNeeded }: { onConcatNeeded?: (projectId: string) =>
     { key: 'slota', label: 'Main Videos' },
     { key: 'slotb', label: 'Overlays' },
     { key: 'preview', label: 'Preview' },
+    { key: 'transcription', label: 'Transcription' },
   ]
 
   return (
@@ -125,6 +127,11 @@ function Workspace({ onConcatNeeded }: { onConcatNeeded?: (projectId: string) =>
               projectId={currentProjectId}
               concatReady={concatJob.status === 'done'}
             />
+          )}
+        </div>
+        <div role="tabpanel" id="panel-transcription" aria-label="Transcription tab panel" hidden={activeTab !== 'transcription'}>
+          {activeTab === 'transcription' && (
+            <TranscriptionPanel projectId={currentProjectId} />
           )}
         </div>
       </div>

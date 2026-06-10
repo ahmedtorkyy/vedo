@@ -149,4 +149,83 @@ self.onmessage = async (e: MessageEvent) => {
     purgeMemfs()
     self.postMessage({ type: 'memfs-purged' })
   }
+
+  if (type === 'extract-audio') {
+    try {
+      const instance = await getFFmpeg()
+      const { projectId, inputName, outputName } = payload as { projectId: string; inputName: string; outputName: string }
+
+      const raw = await readOpfsFile(projectId, inputName)
+      await instance.writeFile(inputName, raw)
+
+      await instance.exec([
+        '-i', inputName,
+        '-vn',
+        '-ar', '16000',
+        '-ac', '1',
+        '-f', 'wav',
+        outputName,
+      ])
+
+      const result = await instance.readFile(outputName) as Uint8Array
+      const copy = new Uint8Array(result.byteLength)
+      copy.set(result)
+      await writeOpfsFile(projectId, outputName, copy)
+
+      await instance.deleteFile(inputName)
+      await instance.deleteFile(outputName)
+
+      self.postMessage({ type: 'audio-extracted', outputName })
+    } catch (err) {
+      self.postMessage({ type: 'extract-error', error: String(err) })
+    }
+  }
+
+  if (type === 'clean-audio') {
+    try {
+      const instance = await getFFmpeg()
+      const { projectId, inputName, outputName, options } = payload as {
+        projectId: string; inputName: string; outputName: string; options: { noiseReduction: boolean; silenceTrim: boolean; threshold?: number }
+      }
+
+      const raw = await readOpfsFile(projectId, inputName)
+      await instance.writeFile(inputName, raw)
+
+      const filters: string[] = []
+      if (options.noiseReduction) filters.push('afftdn=nf=-20')
+      if (options.silenceTrim && options.threshold) {
+        filters.push(`silenceremove=start_periods=1:start_duration=1:start_threshold=-${options.threshold}dB:stop_periods=1:stop_duration=1:stop_threshold=-${options.threshold}dB`)
+      }
+
+      if (filters.length > 0) {
+        await instance.exec([
+          '-i', inputName,
+          '-af', filters.join(','),
+          '-ar', '16000',
+          '-ac', '1',
+          '-f', 'wav',
+          outputName,
+        ])
+      } else {
+        await instance.exec([
+          '-i', inputName,
+          '-c', 'copy',
+          '-f', 'wav',
+          outputName,
+        ])
+      }
+
+      const result = await instance.readFile(outputName) as Uint8Array
+      const copy = new Uint8Array(result.byteLength)
+      copy.set(result)
+      await writeOpfsFile(projectId, outputName, copy)
+
+      await instance.deleteFile(inputName)
+      await instance.deleteFile(outputName)
+
+      self.postMessage({ type: 'audio-cleaned', outputName })
+    } catch (err) {
+      self.postMessage({ type: 'clean-error', error: String(err) })
+    }
+  }
 }
