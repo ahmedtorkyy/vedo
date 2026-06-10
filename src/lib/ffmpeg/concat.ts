@@ -1,4 +1,3 @@
-import type { Clip, ConcatJob } from '../../types'
 import { useClipStore } from '../state/clip-store'
 
 let worker: Worker | null = null
@@ -55,26 +54,20 @@ function handleWorkerMessage(e: MessageEvent) {
 }
 
 export async function loadFFmpeg(): Promise<void> {
-  const store = useClipStore.getState()
-  store.setConcatJob({ status: 'loading-ffmpeg', progress: 0 })
+  useClipStore.getState().setConcatJob({ status: 'loading-ffmpeg', progress: 0 })
   getWorker().postMessage({ type: 'load' })
 }
 
 export async function concatClips(
-  clips: { name: string; data: Uint8Array }[]
+  clips: { name: string; data: ArrayBuffer }[]
 ): Promise<Uint8Array> {
-  const store = useClipStore.getState()
-  store.setConcatJob({ status: 'concatenating', progress: 0 })
+  useClipStore.getState().setConcatJob({ status: 'concatenating', progress: 0 })
 
   return new Promise<Uint8Array>((resolve, reject) => {
     pendingConcat = { resolve, reject }
-    getWorker().postMessage({ type: 'concat', payload: { clips } })
+    const transferables = clips.map((c) => c.data)
+    getWorker().postMessage({ type: 'concat', payload: { clips } }, transferables)
   })
-}
-
-export async function readFileAsUint8Array(file: File): Promise<Uint8Array> {
-  const buffer = await file.arrayBuffer()
-  return new Uint8Array(buffer)
 }
 
 export function terminateWorker(): void {

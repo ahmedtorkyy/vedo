@@ -1,5 +1,5 @@
 import { useEffect, useCallback } from 'react'
-import { loadFFmpeg, concatClips, readFileAsUint8Array, terminateWorker } from '../lib/ffmpeg'
+import { loadFFmpeg, concatClips, terminateWorker } from '../lib/ffmpeg'
 import { useClipStore } from '../lib/state'
 import { getProjectDirectory, getFileHandle, deleteFile } from '../lib/opfs'
 
@@ -25,28 +25,35 @@ export function useFFmpeg() {
       return
     }
 
-    const clipData: { name: string; data: Uint8Array }[] = []
-    for (const clip of clips) {
-      const handle = await getFileHandle(dir, clip.fileName)
-      if (!handle) continue
-      const file = await handle.getFile()
-      const data = await readFileAsUint8Array(file)
-      clipData.push({ name: clip.fileName, data })
+    const clipData: { name: string; data: ArrayBuffer }[] = []
+    try {
+      for (const clip of clips) {
+        const handle = await getFileHandle(dir, clip.fileName)
+        if (!handle) continue
+        const file = await handle.getFile()
+        const buffer = await file.arrayBuffer()
+        clipData.push({ name: clip.fileName, data: buffer })
+      }
+    } catch (err) {
+      store.setConcatJob({ status: 'error', error: String(err) })
+      return
     }
 
     if (clipData.length < 2) {
-      store.setConcatJob({ status: clipData.length === 1 ? 'done' : 'idle', progress: 100 })
+      const status = clipData.length === 1 ? 'done' : 'idle'
+      store.setConcatJob({ status, progress: 100 })
       return
     }
 
     try {
       const result = await concatClips(clipData)
-      await dir.getFileHandle('_concat_output.mp4', { create: true })
+
       const existing = await getFileHandle(dir, '_concat_output.mp4')
       if (existing) {
         await deleteFile(dir, '_concat_output.mp4')
       }
-      const writable = await (await dir.getFileHandle('_concat_output.mp4', { create: true })).createWritable()
+      const outHandle = await dir.getFileHandle('_concat_output.mp4', { create: true })
+      const writable = await outHandle.createWritable()
       await writable.write(result)
       await writable.close()
     } catch (err) {

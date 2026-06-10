@@ -1,3 +1,4 @@
+import { useEffect, useRef } from 'react'
 import type { UploadProgressEntry } from '../../types'
 
 interface UploadProgressProps {
@@ -6,23 +7,55 @@ interface UploadProgressProps {
 }
 
 export function UploadProgress({ uploads, concatStatus }: UploadProgressProps) {
+  const prevConcatRef = useRef(concatStatus)
+  const liveRef = useRef<HTMLDivElement>(null)
+
+  useEffect(() => {
+    const prev = prevConcatRef.current
+    prevConcatRef.current = concatStatus
+
+    if (concatStatus === prev) return
+    if (!liveRef.current) return
+
+    let msg = ''
+    if (concatStatus === 'loading-ffmpeg') msg = 'Loading processing engine'
+    else if (concatStatus === 'concatenating') msg = 'Re-stitching timeline'
+    else if (concatStatus === 'done') msg = 'Timeline re-stitch complete'
+    else if (concatStatus === 'error') msg = 'Timeline re-stitch failed'
+
+    if (msg) {
+      liveRef.current.textContent = ''
+      requestAnimationFrame(() => { liveRef.current!.textContent = msg })
+    }
+  }, [concatStatus])
+
   if (uploads.length === 0 && concatStatus === 'idle') return null
 
   const isConcatActive = concatStatus === 'loading-ffmpeg' || concatStatus === 'concatenating'
+  const uploadingEntries = uploads.filter((u) => u.status === 'uploading')
+  const hasActiveUploads = uploadingEntries.length > 0
 
   return (
     <div className="space-y-2" role="region" aria-label="Upload and processing progress">
-      <div aria-live="polite" aria-atomic="true" className="sr-only">
-        {uploads.some((u) => u.status === 'uploading') && 'Files are being uploaded'}
-        {isConcatActive && 'Timeline is being re-stitched'}
-      </div>
+      <div
+        ref={liveRef}
+        aria-live="polite"
+        aria-atomic="true"
+        className="sr-only"
+      />
+
+      {hasActiveUploads && (
+        <div role="status" className="sr-only">
+          {uploadingEntries.length} file{uploadingEntries.length !== 1 ? 's' : ''} uploading
+        </div>
+      )}
 
       {uploads.map((entry) => (
         <div
           key={entry.clipId}
           className="rounded-md bg-gray-800 px-3 py-2"
           role="status"
-          aria-label={`${entry.fileName}: ${entry.status}`}
+          aria-label={`${entry.fileName}: ${entry.status}${entry.status === 'uploading' ? ` ${entry.progress} percent` : ''}`}
         >
           <div className="flex items-center justify-between text-sm">
             <span className="truncate text-gray-300">{entry.fileName}</span>
@@ -51,7 +84,6 @@ export function UploadProgress({ uploads, concatStatus }: UploadProgressProps) {
         <div
           className="rounded-md bg-amber-900/30 px-3 py-2 text-sm text-amber-300"
           role="status"
-          aria-live="polite"
         >
           {concatStatus === 'loading-ffmpeg' ? 'Loading processing engine...' : 'Re-stitching timeline...'}
         </div>

@@ -1,7 +1,7 @@
 import { createContext, useContext, useCallback, useRef } from 'react'
 
 interface AriaAnnouncerContextValue {
-  announce: (message: string) => void
+  announce: (message: string, assertive?: boolean) => void
 }
 
 const AriaAnnouncerContext = createContext<AriaAnnouncerContextValue>({

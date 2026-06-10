@@ -1,1 +1,1 @@
-export { loadFFmpeg, concatClips, readFileAsUint8Array, terminateWorker } from './concat'
+export { loadFFmpeg, concatClips, terminateWorker } from './concat'

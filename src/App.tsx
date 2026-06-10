@@ -1,4 +1,4 @@
-import { useCallback, useState } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
 import { useProjectStore, useClipStore, useHistoryStore } from './lib/state'
 import { useFFmpeg } from './hooks/useFFmpeg'
 import { useKeyboardShortcuts } from './hooks/useKeyboardShortcuts'
@@ -9,26 +9,32 @@ import { AriaAnnouncerProvider, useAriaAnnouncer } from './components/accessibil
 
 type WorkspaceTab = 'slota' | 'slotb' | 'preview'
 
-function Workspace() {
+function Workspace({ onConcatNeeded }: { onConcatNeeded?: (projectId: string) => void }) {
   const currentProjectId = useProjectStore((s) => s.currentProjectId)
   const project = useProjectStore((s) => s.projects.find((p) => p.id === s.currentProjectId))
   const concatJob = useClipStore((s) => s.concatJob)
   const pushSnapshot = useHistoryStore((s) => s.pushSnapshot)
-  const { runConcat } = useFFmpeg()
   const { announce } = useAriaAnnouncer()
   const [activeTab, setActiveTab] = useState<WorkspaceTab>('slota')
+  const prevConcatRef = useRef(concatJob.status)
 
-  const handleProjectChange = useCallback(() => {
+  useEffect(() => {
+    const prev = prevConcatRef.current
+    prevConcatRef.current = concatJob.status
+
+    if (concatJob.status === 'loading-ffmpeg') announce('Loading processing engine')
+    else if (concatJob.status === 'concatenating') announce('Timeline re-stitch in progress')
+    else if (concatJob.status === 'done' && prev !== 'done') announce('Timeline re-stitch complete')
+    else if (concatJob.status === 'error') announce('Timeline re-stitch failed', true)
+  }, [concatJob.status, announce])
+
+  const handleConcatNeeded = useCallback(() => {
     const id = useProjectStore.getState().currentProjectId
-    if (id) {
-      runConcat(id)
-    }
-  }, [runConcat])
+    if (id) onConcatNeeded?.(id)
+  }, [onConcatNeeded])
 
   useKeyboardShortcuts({
-    Escape: () => {
-      // close any open panels — handled by dialog components
-    },
+    Escape: () => {},
   })
 
   if (!currentProjectId || !project) {
@@ -60,8 +66,7 @@ function Workspace() {
           <button
             type="button"
             onClick={() => {
-              const state = useClipStore.getState()
-              pushSnapshot(state)
+              pushSnapshot(useClipStore.getState())
               announce('State snapshot saved')
             }}
             className="rounded px-2 py-1 text-xs text-gray-400 hover:bg-gray-700 focus:outline-none focus:ring-2 focus:ring-sky-500"
@@ -92,7 +97,9 @@ function Workspace() {
 
       <div className="flex-1 overflow-y-auto p-4">
         <div role="tabpanel" id="panel-slota" hidden={activeTab !== 'slota'}>
-          {activeTab === 'slota' && <SlotA projectId={currentProjectId} onConcatNeeded={() => runConcat(currentProjectId)} />}
+          {activeTab === 'slota' && (
+            <SlotA projectId={currentProjectId} onConcatNeeded={handleConcatNeeded} />
+          )}
         </div>
         <div role="tabpanel" id="panel-slotb" hidden={activeTab !== 'slotb'}>
           {activeTab === 'slotb' && <SlotB projectId={currentProjectId} />}
@@ -111,10 +118,20 @@ function Workspace() {
 }
 
 function App() {
+  const { runConcat } = useFFmpeg()
+
+  const handleProjectChange = useCallback(() => {
+    const id = useProjectStore.getState().currentProjectId
+    if (id) {
+      const clips = useClipStore.getState().getSlotClips(id, 'A')
+      if (clips.length >= 2) runConcat(id)
+    }
+  }, [runConcat])
+
   return (
     <AriaAnnouncerProvider>
       <MainLayout sidebar={<Sidebar onProjectChange={handleProjectChange} />}>
-        <Workspace />
+        <Workspace onConcatNeeded={runConcat} />
       </MainLayout>
     </AriaAnnouncerProvider>
   )

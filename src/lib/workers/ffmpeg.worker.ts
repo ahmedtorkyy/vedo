@@ -1,6 +1,7 @@
 import { FFmpeg } from '@ffmpeg/ffmpeg'
 
 let ffmpeg: FFmpeg | null = null
+let ready = false
 
 async function getFFmpeg(): Promise<FFmpeg> {
   if (!ffmpeg) {
@@ -9,6 +10,7 @@ async function getFFmpeg(): Promise<FFmpeg> {
       self.postMessage({ type: 'concat-progress', progress })
     })
     await ffmpeg.load()
+    ready = true
     self.postMessage({ type: 'ffmpeg-loaded' })
   }
   return ffmpeg
@@ -20,10 +22,10 @@ self.onmessage = async (e: MessageEvent) => {
   if (type === 'concat') {
     try {
       const instance = await getFFmpeg()
-      const { clips } = payload as { clips: { name: string; data: Uint8Array }[] }
+      const { clips } = payload as { clips: { name: string; data: ArrayBuffer }[] }
 
       for (const clip of clips) {
-        await instance.writeFile(clip.name, clip.data)
+        await instance.writeFile(clip.name, new Uint8Array(clip.data))
       }
 
       const concatContent = clips.map((c) => `file '${c.name}'`).join('\n')
@@ -32,8 +34,8 @@ self.onmessage = async (e: MessageEvent) => {
 
       await instance.exec(['-f', 'concat', '-safe', '0', '-i', concatName, '-c', 'copy', 'output.mp4'])
 
-      const data = await instance.readFile('output.mp4')
-      const result = data as Uint8Array
+      const raw = await instance.readFile('output.mp4')
+      const result = raw as Uint8Array
 
       for (const clip of clips) {
         await instance.deleteFile(clip.name)
@@ -41,7 +43,8 @@ self.onmessage = async (e: MessageEvent) => {
       await instance.deleteFile(concatName)
       await instance.deleteFile('output.mp4')
 
-      self.postMessage({ type: 'concat-done', data: result.buffer }, [result.buffer])
+      const resultBuf = result.buffer.slice(0)
+      self.postMessage({ type: 'concat-done', data: resultBuf }, [resultBuf])
     } catch (err) {
       self.postMessage({ type: 'concat-error', error: String(err) })
     }

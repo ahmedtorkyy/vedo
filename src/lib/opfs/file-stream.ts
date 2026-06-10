@@ -8,6 +8,8 @@ export async function streamFileToOPFS(
   let fileHandle: FileSystemFileHandle
   try {
     fileHandle = await dir.getFileHandle(file.name)
+    await dir.removeEntry(file.name)
+    fileHandle = await dir.getFileHandle(file.name, { create: true })
   } catch {
     fileHandle = await dir.getFileHandle(file.name, { create: true })
   }
