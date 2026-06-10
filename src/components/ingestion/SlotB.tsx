@@ -23,7 +23,7 @@ export function SlotB({ projectId, onPlayClip }: SlotBProps) {
   const { announce } = useAriaAnnouncer()
   const lastPctRef = useRef<Record<string, number>>({})
 
-  const uploadsList = useMemo(() => Object.values(uploads), [uploads])
+  const uploadsList = useMemo(() => Object.values(uploads).filter((u) => u.slot === 'B' || !u.slot), [uploads])
 
   const handleFiles = useCallback((files: FileList) => {
     const count = files.length

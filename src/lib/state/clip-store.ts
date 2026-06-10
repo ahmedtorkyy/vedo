@@ -5,7 +5,7 @@ import type { Clip, UploadProgressEntry } from '../../types';
 interface ClipState {
   clips: Record<string, { A: Clip[]; B: Clip[] }>;
   uploads: Record<string, UploadProgressEntry>;
-  concatJob: { status: 'idle' | 'loading-ffmpeg' | 'concatenating' | 'done' | 'error' };
+  concatJob: { status: 'idle' | 'loading-ffmpeg' | 'concatenating' | 'done' | 'error'; outputFilename?: string };
   
   getSlotClips: (projectId: string, slot: 'A' | 'B') => Clip[];
   getClipById: (projectId: string, slot: 'A' | 'B', clipId: string) => Clip | undefined;
@@ -15,7 +15,7 @@ interface ClipState {
   initUpload: (entry: UploadProgressEntry) => void;
   setUploadProgress: (clipId: string, progress: number, status: UploadProgressEntry['status'], error?: string) => void;
   removeUploadProgress: (clipId: string) => void;
-  setConcatStatus: (status: ClipState['concatJob']['status']) => void;
+  setConcatStatus: (status: ClipState['concatJob']['status'], outputFilename?: string) => void;
   removeProjectData: (projectId: string) => void;
 }
 
@@ -97,7 +97,7 @@ export const useClipStore = create<ClipState>()(
         return { uploads: next };
       }),
 
-      setConcatStatus: (status) => set({ concatJob: { status } }),
+      setConcatStatus: (status, outputFilename) => set({ concatJob: { status, outputFilename } }),
 
       removeProjectData: (projectId) => set((state) => {
         const nextClips = { ...state.clips }

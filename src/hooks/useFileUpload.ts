@@ -64,7 +64,8 @@ export function useFileUpload() {
         clipId,
         fileName: file.name,
         progress: 0,
-        status: 'uploading'
+        status: 'uploading',
+        slot,
       })
 
       onFileStart?.(file.name)

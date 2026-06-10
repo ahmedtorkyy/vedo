@@ -216,7 +216,7 @@ export function EditingPanel({ projectId }: EditingPanelProps) {
 
       {selectedTranscript && selectedTranscript.status === 'done' && (
         <details className="rounded-md border border-gray-700 bg-gray-800/30">
-          <summary className="cursor-pointer px-3 py-2 text-xs font-medium text-gray-400 hover:text-gray-200" role="button" aria-label="View transcript reference">
+          <summary className="cursor-pointer px-3 py-2 text-xs font-medium text-gray-400 hover:text-gray-200">
             Transcript Reference ({selectedTranscript.segments.length} segments)
           </summary>
           <div className="max-h-40 overflow-y-auto px-3 pb-2">

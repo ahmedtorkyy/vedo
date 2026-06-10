@@ -232,19 +232,28 @@ self.onmessage = async (e: MessageEvent) => {
   if (type === 'render-clip') {
     try {
       const instance = await getFFmpeg()
-      const { projectId, inputName, outputName, filterComplex, overlayInputName } = payload as {
+      const { projectId, inputName, outputName, filterComplex, overlayInputNames } = payload as {
         projectId: string; inputName: string; outputName: string; filterComplex: string
-        overlayInputName?: string
+        overlayInputNames?: string[]
       }
+
+      instance.on('progress', ({ progress }) => {
+        self.postMessage({ type: 'render-clip-progress', progress: Math.round(progress * 100), message: `Rendering clip... ${Math.round(progress * 100)}%` })
+      })
 
       const raw = await readOpfsFile(projectId, inputName)
       await instance.writeFile(inputName, raw)
 
       const args = ['-i', inputName]
-      if (overlayInputName) {
-        const overlayRaw = await readOpfsFile(projectId, overlayInputName)
-        await instance.writeFile(overlayInputName, overlayRaw)
-        args.push('-i', overlayInputName)
+      const writtenOverlays: string[] = []
+      if (overlayInputNames && overlayInputNames.length > 0) {
+        for (const overlayName of overlayInputNames) {
+          if (!overlayName) continue
+          const overlayRaw = await readOpfsFile(projectId, overlayName)
+          await instance.writeFile(overlayName, overlayRaw)
+          args.push('-i', overlayName)
+          writtenOverlays.push(overlayName)
+        }
       }
       args.push(
         '-filter_complex', filterComplex,
@@ -266,8 +275,8 @@ self.onmessage = async (e: MessageEvent) => {
       copy.set(result)
       await writeOpfsFile(projectId, outputName, copy)
 
-      if (overlayInputName) {
-        await instance.deleteFile(overlayInputName).catch(() => {})
+      for (const on of writtenOverlays) {
+        await instance.deleteFile(on).catch(() => {})
       }
       await instance.deleteFile(inputName)
       await instance.deleteFile(outputName)
@@ -303,6 +312,10 @@ self.onmessage = async (e: MessageEvent) => {
         return
       }
 
+      instance.on('progress', ({ progress }) => {
+        self.postMessage({ type: 'render-concat-progress', progress: 85 + Math.round(progress * 15), message: `Concatenating... ${Math.round(progress * 100)}%` })
+      })
+
       for (const clip of clips) {
         const raw = await readOpfsFile(projectId, clip.name)
         await instance.writeFile(clip.name, raw)
@@ -310,7 +323,12 @@ self.onmessage = async (e: MessageEvent) => {
 
       const concatInput = clips.map((c) => `file '${c.name}'`).join('\n')
       await instance.writeFile('concat.txt', new TextEncoder().encode(concatInput))
-      await instance.exec(['-f', 'concat', '-safe', '0', '-i', 'concat.txt', '-c', 'copy', outputName])
+      await instance.exec([
+        '-f', 'concat', '-safe', '0', '-i', 'concat.txt',
+        '-c:v', 'libx264', '-preset', 'fast', '-crf', '23',
+        '-c:a', 'aac', '-b:a', '128k',
+        outputName,
+      ])
 
       const result = await instance.readFile(outputName) as Uint8Array
       const copy = new Uint8Array(result.byteLength)

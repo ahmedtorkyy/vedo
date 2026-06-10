@@ -32,6 +32,7 @@ export interface UploadProgressEntry {
   fileName: string
   progress: number
   status: 'queued' | 'uploading' | 'done' | 'error'
+  slot?: 'A' | 'B'
   error?: string
 }
 

@@ -39,6 +39,11 @@ function getWorker(): Worker {
 function handleWorkerMessage(e: MessageEvent): void {
   const { type } = e.data
 
+  if (type === 'render-clip-progress') {
+    progressCallback?.({ status: 'processing', progress: e.data.progress, message: e.data.message ?? 'Applying effects' })
+    return
+  }
+
   if (type === 'render-clip-done') {
     pendingRender?.resolve(e.data.outputFilename)
     pendingRender = null
@@ -48,6 +53,11 @@ function handleWorkerMessage(e: MessageEvent): void {
   if (type === 'render-clip-error') {
     pendingRender?.reject(new Error(e.data.error ?? 'Clip render failed'))
     pendingRender = null
+    return
+  }
+
+  if (type === 'render-concat-progress') {
+    progressCallback?.({ status: 'concatenating', progress: e.data.progress, message: e.data.message ?? 'Concatenating clips' })
     return
   }
 
@@ -70,82 +80,128 @@ function sendProgress(status: RenderStatus, progress: number, message: string, o
 
 const MAX_ZOOM: Record<string, number> = { soft: 1.02, medium: 1.05, dynamic: 1.1, aggressive: 1.2 }
 
+function buildZoomFilters(zoomDecisions: EditDecision[]): string[] {
+  const filters: string[] = []
+  for (const zd of zoomDecisions) {
+    const intensity = (zd.parameters.intensity as string) ?? 'medium'
+    const factor = MAX_ZOOM[intensity] ?? 1.05
+    const duration = Math.max(0.1, zd.endTime - zd.startTime)
+    const rate = ((factor - 1) / duration).toFixed(6)
+    const start = zd.startTime
+    const end = zd.endTime
+
+    filters.push(
+      `scale=w='if(between(t,${start},${end}),min(iw*(1+(t-${start})*${rate}),iw*${factor}),iw)':h='if(between(t,${start},${end}),min(ih*(1+(t-${start})*${rate}),ih*${factor}),ih)':eval=frame`,
+      `crop=w='if(between(t,${start},${end}),iw/min(1+(t-${start})*${rate},${factor}),iw)':h='if(between(t,${start},${end}),ih/min(1+(t-${start})*${rate},${factor}),ih)':eval=frame`,
+    )
+  }
+  return filters
+}
+
 function buildFilterComplex(
   zoomDecisions: EditDecision[],
   overlayDecisions: EditDecision[],
-): { filterComplex: string | null; needsOverlayInput: boolean } {
+  isMuted: boolean,
+): { filterComplex: string | null; overlayClipNames: string[] } {
   const hasZoom = zoomDecisions.length > 0
   const hasOverlay = overlayDecisions.length > 0
 
-  if (!hasZoom && !hasOverlay) return { filterComplex: null, needsOverlayInput: false }
+  if (!hasZoom && !hasOverlay && !isMuted) return { filterComplex: null, overlayClipNames: [] }
 
-  const videoFilters: string[] = []
+  const seenClips = new Set<string>()
+  const overlayClipNames: string[] = []
+  for (const od of overlayDecisions) {
+    if (od.overlayClipId && !seenClips.has(od.overlayClipId)) {
+      seenClips.add(od.overlayClipId)
+      overlayClipNames.push(od.overlayClipId)
+    }
+  }
+
+  const mainVideoFilters: string[] = []
 
   if (hasZoom) {
-    for (const zd of zoomDecisions) {
-      const intensity = (zd.parameters.intensity as string) ?? 'medium'
-      const factor = MAX_ZOOM[intensity] ?? 1.05
-      const len = Math.max(1, Math.round((zd.endTime - zd.startTime) * 30))
-      const rate = (factor - 1) / len
-      const enable = `between(t,${zd.startTime},${zd.endTime})`
-      videoFilters.push(
-        `zoompan=z='if(eq(0,0),1,min(zoom+${rate.toFixed(6)},${factor}))':d=${len}:s=1920x1080:fps=30:y='ih/2-(ih/zoom/2)':x='iw/2-(iw/zoom/2)':enable='${enable}'`,
-      )
-    }
+    mainVideoFilters.push(...buildZoomFilters(zoomDecisions))
   }
 
-  videoFilters.push('fps=30')
+  mainVideoFilters.push('fps=30')
 
   if (hasOverlay) {
-    let fc = `[0:v]${videoFilters.join(',')}[v0];`
+    let fc = `[0:v]${mainVideoFilters.join(',')}[vbase];`
 
-    const overlayParts: string[] = []
+    const uniqueOverlays: { clipIdx: number; od: EditDecision }[] = []
+    let clipIdx = 1
+    const seen = new Map<string, number>()
     for (const od of overlayDecisions) {
-      const placement = (od.parameters.placement as string) ?? 'center'
-      const scaleFactor = (od.parameters.scale as number) ?? 0.3
-      const opacity = (od.parameters.opacity as number) ?? 1
-
-      overlayParts.push(`scale=w=iw*${scaleFactor}:h=ih*${scaleFactor}`)
-      if (opacity < 1) {
-        overlayParts.push(`format=rgba,colorchannelmixer=aa=${opacity}`)
-      }
-
-      let x: string
-      let y: string
-      switch (placement) {
-        case 'center':
-          x = '(W-w)/2'
-          y = '(H-h)/2'
-          break
-        case 'left':
-          x = '0'
-          y = '(H-h)/2'
-          break
-        case 'right':
-          x = 'W-w'
-          y = '(H-h)/2'
-          break
-        case 'pip':
-          x = 'W-w-10'
-          y = 'H-h-10'
-          break
-        case 'fullscreen':
-          x = '0'
-          y = '0'
-          break
-        default:
-          x = '(W-w)/2'
-          y = '(H-h)/2'
-      }
-
-      overlayParts.push(`overlay=x=${x}:y=${y}:enable='between(t,${od.startTime},${od.endTime})'`)
+      const cid = od.overlayClipId ?? ''
+      if (!seen.has(cid)) seen.set(cid, clipIdx++)
+      uniqueOverlays.push({ clipIdx: seen.get(cid)!, od })
     }
 
-    fc += `[1:v]${overlayParts.join(',')}[v1];[v0][v1]overlay=format=auto[v];[0:a]anull[a]`
-    return { filterComplex: fc, needsOverlayInput: true }
+    let labelIdx = 0
+    const overlayLabels: string[] = []
+
+    for (const { clipIdx: ci, od } of uniqueOverlays) {
+      const scaleFactor = (od.parameters.scale as number) ?? 0.3
+      const opacity = (od.parameters.opacity as number) ?? 1
+      const lbl = `o${labelIdx++}`
+      overlayLabels.push(lbl)
+
+      const overlayFilters: string[] = [
+        `scale=w=iw*${scaleFactor}:h=ih*${scaleFactor}`,
+      ]
+      if (opacity < 1) {
+        overlayFilters.push(`format=rgba,colorchannelmixer=aa=${opacity}`)
+      }
+
+      fc += `[${ci}:v]${overlayFilters.join(',')}[${lbl}];`
+    }
+
+    // Chain overlays: [vbase][o1]overlay...[vtmp1];[vtmp1][o2]overlay...
+    let prevLabel = 'vbase'
+    for (let i = 0; i < overlayLabels.length; i++) {
+      const nextLabel = i < overlayLabels.length - 1 ? `vtmp${i}` : 'v'
+      const od = uniqueOverlays[i].od
+      const x = overlayPosition(od.parameters.placement as string ?? 'center',
+        od.parameters.scale as number ?? 0.3)
+      const y = overlayPositionY(od.parameters.placement as string ?? 'center',
+        od.parameters.scale as number ?? 0.3)
+      fc += `[${prevLabel}][${overlayLabels[i]}]overlay=x=${x}:y=${y}:enable='between(t,${od.startTime},${od.endTime})'[${nextLabel}];`
+      prevLabel = nextLabel
+    }
+
+    if (isMuted) {
+      fc += `[0:a]volume=0[a]`
+    } else {
+      fc += `[0:a]anull[a]`
+    }
+
+    return { filterComplex: fc, overlayClipNames }
   }
 
-  return { filterComplex: `[0:v]${videoFilters.join(',')}[v];[0:a]anull[a]`, needsOverlayInput: false }
+  const audioFilter = isMuted ? 'volume=0' : 'anull'
+  return { filterComplex: `[0:v]${mainVideoFilters.join(',')}[v];[0:a]${audioFilter}[a]`, overlayClipNames }
+}
+
+function overlayPosition(placement: string, _scale: number): string {
+  switch (placement) {
+    case 'center': return '(W-w)/2'
+    case 'left': return '0'
+    case 'right': return 'W-w'
+    case 'pip': return 'W-w-10'
+    case 'fullscreen': return '0'
+    default: return '(W-w)/2'
+  }
+}
+
+function overlayPositionY(placement: string, _scale: number): string {
+  switch (placement) {
+    case 'center': return '(H-h)/2'
+    case 'left': return '(H-h)/2'
+    case 'right': return '(H-h)/2'
+    case 'pip': return 'H-h-10'
+    case 'fullscreen': return '0'
+    default: return '(H-h)/2'
+  }
 }
 
 function groupDecisionsByClip(decisions: EditDecision[]): Record<string, EditDecision[]> {
@@ -156,31 +212,6 @@ function groupDecisionsByClip(decisions: EditDecision[]): Record<string, EditDec
     grouped[d.clipId].push(d)
   }
   return grouped
-}
-
-async function readOpfsFile(projectId: string, filename: string): Promise<Uint8Array> {
-  const root = await navigator.storage.getDirectory()
-  const folder = await root.getDirectoryHandle(`project_${projectId}`)
-  const handle = await folder.getFileHandle(filename)
-  const file = await handle.getFile()
-  const reader = file.stream().getReader()
-  const chunks: Uint8Array[] = []
-  let total = 0
-  while (true) {
-    const { done, value } = await reader.read()
-    if (done) break
-    const copy = new Uint8Array(value.byteLength)
-    copy.set(new Uint8Array(value.buffer, value.byteOffset, value.byteLength))
-    chunks.push(copy)
-    total += value.byteLength
-  }
-  const result = new Uint8Array(total)
-  let offset = 0
-  for (const chunk of chunks) {
-    result.set(chunk, offset)
-    offset += chunk.byteLength
-  }
-  return result
 }
 
 async function deleteOpfsFile(projectId: string, filename: string): Promise<void> {
@@ -218,22 +249,22 @@ export async function exportVideo(projectId: string): Promise<string> {
     let currentName = clip.opfsFilename
 
     if (trimDecisions.length > 0) {
-      sendProgress('processing', ((i + 0.15) / clipsA.length) * 60, `Trimming silence in clip ${i + 1}`)
+      sendProgress('processing', ((i + 0.1) / clipsA.length) * 60, `Trimming silence in clip ${i + 1}`)
       const trimSegments = trimDecisions.map((d) => ({ start: d.startTime, end: d.endTime }))
       currentName = await smartCutVideo(projectId, currentName, trimSegments, clip.duration)
       tempFiles.push(currentName)
     }
 
-    if (zoomDecisions.length > 0 || overlayDecisions.length > 0) {
-      sendProgress('processing', ((i + 0.55) / clipsA.length) * 60, `Applying effects to clip ${i + 1}`)
-      const { filterComplex, needsOverlayInput } = buildFilterComplex(zoomDecisions, overlayDecisions)
+    if (zoomDecisions.length > 0 || overlayDecisions.length > 0 || clip.muted) {
+      sendProgress('processing', ((i + 0.5) / clipsA.length) * 60, `Applying effects to clip ${i + 1}`)
+      const { filterComplex, overlayClipNames } = buildFilterComplex(zoomDecisions, overlayDecisions, clip.muted)
 
       if (filterComplex) {
         const outName = `_rendered_${clip.id}_${Date.now()}.mp4`
 
-        const overlayClip = needsOverlayInput && overlayDecisions[0]?.overlayClipId
-          ? clipsB.find((b) => b.id === overlayDecisions[0].overlayClipId)
-          : undefined
+        const overlayInputNames = overlayClipNames
+          .map((cid) => clipsB.find((b) => b.id === cid)?.opfsFilename)
+          .filter((n): n is string => !!n)
 
         getWorker().postMessage({
           type: 'render-clip',
@@ -242,7 +273,7 @@ export async function exportVideo(projectId: string): Promise<string> {
             inputName: currentName,
             outputName: outName,
             filterComplex,
-            overlayInputName: overlayClip?.opfsFilename,
+            overlayInputNames,
           },
         })
 
@@ -272,7 +303,6 @@ export async function exportVideo(projectId: string): Promise<string> {
     finalName = await new Promise<string>((resolve, reject) => {
       pendingConcat = { resolve, reject }
     })
-    tempFiles.push(finalName)
   } else {
     finalName = processedNames[0]
   }
@@ -284,9 +314,11 @@ export async function exportVideo(projectId: string): Promise<string> {
 }
 
 export async function downloadFromOpfs(filename: string, projectId: string, downloadName: string): Promise<void> {
-  const data = await readOpfsFile(projectId, filename)
-  const blob = new Blob([data as BlobPart], { type: 'video/mp4' })
-  const url = URL.createObjectURL(blob)
+  const root = await navigator.storage.getDirectory()
+  const folder = await root.getDirectoryHandle(`project_${projectId}`)
+  const handle = await folder.getFileHandle(filename)
+  const file = await handle.getFile()
+  const url = URL.createObjectURL(file)
   const a = document.createElement('a')
   a.href = url
   a.download = downloadName

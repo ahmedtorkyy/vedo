@@ -96,12 +96,29 @@ function Workspace({ onConcatNeeded }: { onConcatNeeded?: (projectId: string) =>
             Save State
           </button>
         </div>
-        <nav role="tablist" aria-label="Workspace sections" className="-mb-px flex gap-4">
+        <nav role="tablist" aria-label="Workspace sections" className="-mb-px flex gap-4"
+          onKeyDown={(e) => {
+            const idx = tabs.findIndex((t) => t.key === activeTab)
+            let next: WorkspaceTab | null = null
+            if (e.key === 'ArrowRight' || e.key === 'ArrowDown') {
+              e.preventDefault()
+              next = tabs[(idx + 1) % tabs.length].key
+            } else if (e.key === 'ArrowLeft' || e.key === 'ArrowUp') {
+              e.preventDefault()
+              next = tabs[(idx - 1 + tabs.length) % tabs.length].key
+            }
+            if (next) {
+              setActiveTab(next)
+              announce(`Switched to ${tabs.find((t) => t.key === next)!.label} tab`)
+            }
+          }}
+        >
           {tabs.map((tab) => (
             <button
               key={tab.key}
               role="tab"
               aria-selected={activeTab === tab.key}
+              tabIndex={activeTab === tab.key ? 0 : -1}
               aria-controls={`panel-${tab.key}`}
               onClick={() => {
                 setActiveTab(tab.key)

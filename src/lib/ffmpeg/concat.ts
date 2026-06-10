@@ -45,8 +45,9 @@ function handleWorkerMessage(e: MessageEvent) {
   }
 
   if (type === 'concat-done') {
-    useClipStore.getState().setConcatStatus('done')
-    pendingConcat?.resolve(e.data.outputFilename ?? '_concat_output.mp4')
+    const outFilename = e.data.outputFilename ?? '_concat_output.mp4'
+    useClipStore.getState().setConcatStatus('done', outFilename)
+    pendingConcat?.resolve(outFilename)
     pendingConcat = null
     isRunning = false
     return

@@ -82,6 +82,19 @@ export function SilenceTimeline({ duration, segments, fillerWords, lowEnergySect
           <span className="text-gray-500">({fillerWords.length})</span>
         </span>
       </div>
+
+      {segments.length > 0 && (
+        <div className="mt-2 space-y-1" role="list" aria-label="Silent regions list">
+          <p className="text-[10px] font-medium text-gray-500">Detected silent regions</p>
+          {segments.map((seg, i) => (
+            <div key={`silence-item-${i}`} role="listitem" aria-label={`Silence ${i + 1} of ${segments.length}`} className="flex items-center gap-2 rounded bg-gray-800 px-2 py-1 text-[10px] text-gray-400">
+              <span className="shrink-0 font-mono text-gray-500">#{i + 1}</span>
+              <span>{formatTime(seg.start)} – {formatTime(seg.end)}</span>
+              <span className="text-gray-500">({seg.duration.toFixed(1)}s)</span>
+            </div>
+          ))}
+        </div>
+      )}
     </div>
   )
 }

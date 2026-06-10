@@ -1,4 +1,5 @@
 import { useRef, useEffect, useCallback, useState } from 'react'
+import { useClipStore } from '../../lib/state'
 
 interface PreviewPlayerProps {
   projectId: string | null
@@ -10,6 +11,34 @@ export function PreviewPlayer({ projectId, concatReady }: PreviewPlayerProps) {
   const [playing, setPlaying] = useState(false)
   const [currentTime, setCurrentTime] = useState(0)
   const [duration, setDuration] = useState(0)
+  const blobUrlRef = useRef<string | null>(null)
+  const concatJob = useClipStore((s) => s.concatJob)
+
+  const loadConcatOutput = useCallback(async () => {
+    if (!projectId) return
+    const outFilename = concatJob.outputFilename
+    if (!outFilename) return
+
+    try {
+      const root = await navigator.storage.getDirectory()
+      const folder = await root.getDirectoryHandle(`project_${projectId}`)
+      const handle = await folder.getFileHandle(outFilename)
+      const file = await handle.getFile()
+      const url = URL.createObjectURL(file)
+
+      if (blobUrlRef.current) URL.revokeObjectURL(blobUrlRef.current)
+      blobUrlRef.current = url
+
+      const video = videoRef.current
+      if (video) video.src = url
+    } catch {
+      // concat output not available yet
+    }
+  }, [projectId, concatJob.outputFilename])
+
+  useEffect(() => {
+    loadConcatOutput()
+  }, [loadConcatOutput])
 
   useEffect(() => {
     const video = videoRef.current
@@ -36,6 +65,12 @@ export function PreviewPlayer({ projectId, concatReady }: PreviewPlayerProps) {
     }
   }, [projectId, concatReady])
 
+  useEffect(() => {
+    return () => {
+      if (blobUrlRef.current) URL.revokeObjectURL(blobUrlRef.current)
+    }
+  }, [])
+
   const togglePlay = useCallback(() => {
     const video = videoRef.current
     if (!video) return
@@ -46,7 +81,27 @@ export function PreviewPlayer({ projectId, concatReady }: PreviewPlayerProps) {
     }
   }, [])
 
+  const skipBack = useCallback(() => {
+    const video = videoRef.current
+    if (!video) return
+    video.currentTime = Math.max(0, video.currentTime - 10)
+  }, [])
+
+  const skipForward = useCallback(() => {
+    const video = videoRef.current
+    if (!video) return
+    video.currentTime = Math.min(video.duration || 0, video.currentTime + 10)
+  }, [])
+
+  const handleSeekChange = useCallback((e: React.ChangeEvent<HTMLInputElement>) => {
+    const video = videoRef.current
+    if (!video) return
+    const val = parseFloat(e.target.value)
+    if (!isNaN(val)) video.currentTime = Math.max(0, Math.min(val, video.duration || 0))
+  }, [])
+
   const formatTime = (t: number) => {
+    if (!isFinite(t)) return '0:00'
     const m = Math.floor(t / 60)
     const s = Math.floor(t % 60)
     return `${m}:${s.toString().padStart(2, '0')}`
@@ -73,7 +128,7 @@ export function PreviewPlayer({ projectId, concatReady }: PreviewPlayerProps) {
       </div>
 
       {projectId && (
-        <div className="mt-2 flex items-center gap-3 px-1">
+        <div className="mt-2 flex flex-wrap items-center gap-2 px-1">
           <button
             type="button"
             onClick={togglePlay}
@@ -82,13 +137,37 @@ export function PreviewPlayer({ projectId, concatReady }: PreviewPlayerProps) {
           >
             {playing ? 'Pause' : 'Play'}
           </button>
-          <div className="flex items-center gap-2 text-xs text-gray-400">
-            <span aria-label={`Current time: ${formatTime(currentTime)}`}>
-              {formatTime(currentTime)}
-            </span>
-            <span>/</span>
-            <span aria-label={`Duration: ${formatTime(duration)}`}>
-              {formatTime(duration)}
+          <button
+            type="button"
+            onClick={skipBack}
+            aria-label="Skip back 10 seconds"
+            className="rounded-md bg-gray-700 px-2 py-1.5 text-sm text-gray-200 hover:bg-gray-600 focus:outline-none focus:ring-2 focus:ring-sky-500"
+          >
+            -10s
+          </button>
+          <button
+            type="button"
+            onClick={skipForward}
+            aria-label="Skip forward 10 seconds"
+            className="rounded-md bg-gray-700 px-2 py-1.5 text-sm text-gray-200 hover:bg-gray-600 focus:outline-none focus:ring-2 focus:ring-sky-500"
+          >
+            +10s
+          </button>
+          <div className="flex items-center gap-1 text-xs text-gray-400">
+            <label htmlFor="preview-seek" className="sr-only">Seek to time in seconds</label>
+            <input
+              id="preview-seek"
+              type="number"
+              min={0}
+              max={Math.round(duration) || 0}
+              step={0.1}
+              value={Math.round(currentTime * 10) / 10}
+              onChange={handleSeekChange}
+              className="w-16 rounded border border-gray-600 bg-gray-800 px-1 py-0.5 text-center text-xs text-gray-200 focus:outline-none focus:ring-2 focus:ring-sky-500"
+              aria-label={`Current time in seconds. Type a value and press Enter to seek.`}
+            />
+            <span aria-live="polite" aria-atomic="true">
+              / {formatTime(duration)}
             </span>
           </div>
           {concatReady && (

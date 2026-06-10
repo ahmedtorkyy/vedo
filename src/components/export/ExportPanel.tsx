@@ -57,14 +57,14 @@ export function ExportPanel({ projectId }: ExportPanelProps) {
           </button>
 
           {isBusy && (
-            <div className="space-y-1">
+            <div className="space-y-1" role="progressbar" aria-valuenow={renderState.progress} aria-valuemin={0} aria-valuemax={100} aria-label="Export progress">
               <div className="h-2 w-full overflow-hidden rounded-full bg-gray-700">
                 <div
                   className="h-full rounded-full bg-emerald-500 transition-all duration-300"
                   style={{ width: `${renderState.progress}%` }}
                 />
               </div>
-              <p className="text-[10px] text-gray-500">{renderState.message}</p>
+              <p className="text-[10px] text-gray-500" aria-live="polite">{renderState.message}</p>
             </div>
           )}
 

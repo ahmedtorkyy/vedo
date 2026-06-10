@@ -39,7 +39,8 @@ export function TranscriptionPanel({ projectId }: TranscriptionPanelProps) {
   }, [projectId, selectedClipId, cleanseClipAudio])
 
   const handleSegmentClick = useCallback((start: number) => {
-    console.log('Seek to', start)
+    const video = document.querySelector<HTMLVideoElement>('video[aria-label="Video preview"]')
+    if (video) video.currentTime = start
   }, [])
 
   const canTranscribe = selectedClipId && (!result || result.status === 'idle' || result.status === 'error')
