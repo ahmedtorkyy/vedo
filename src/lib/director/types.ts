@@ -1,7 +1,8 @@
 export type StyleKey =
   | 'professional' | 'cinematic' | 'documentary' | 'educational'
   | 'corporate' | 'luxury' | 'podcast' | 'vlog'
-  | 'food-review' | 'gaming' | 'tiktok' | 'shorts' | 'reels'
+  | 'food-review' | 'tech-review' | 'product-review' | 'general-review'
+  | 'gaming' | 'tiktok' | 'shorts' | 'reels'
 
 export type ZoomLevel = 'soft' | 'medium' | 'dynamic' | 'aggressive'
 export type TransitionLevel = 'minimal' | 'light' | 'dynamic' | 'heavy'
@@ -70,4 +71,35 @@ export interface HookInfo {
   type: 'opening' | 'reaction' | 'reveal' | 'statement' | 'demonstration'
   confidence: number
   text: string
+}
+
+export interface InstructionOverrides {
+  zoom: ZoomLevel | null
+  transitions: TransitionLevel | null
+  pacing: PacingLevel | null
+  overlayFrequency: OverlayFrequency | null
+  effects: EffectsLevel | null
+  framingStyle: 'close-up' | 'medium' | 'wide' | null
+  visualEffects: string[]
+  parsedDirectives: { type: string; value: string; source: string }[]
+}
+
+export type OverlayPlacement = 'center' | 'left' | 'right' | 'pip' | 'fullscreen'
+
+export interface OverlayDecision {
+  overlayClipId: string
+  targetClipId: string
+  startTime: number
+  endTime: number
+  placement: OverlayPlacement
+  scale: number
+  opacity: number
+  reason: string
+}
+
+export interface CombinedTimeline {
+  segments: { start: number; end: number; text: string }[]
+  silenceSegments: { start: number; end: number; duration: number; confidence: number }[]
+  clips: { id: string; fileName: string; duration: number; slot: 'A' | 'B' }[]
+  totalDuration: number
 }

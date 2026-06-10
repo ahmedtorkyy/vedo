@@ -1,6 +1,7 @@
-import { useCallback } from 'react'
+import { useCallback, useMemo } from 'react'
+import { useClipStore } from '../../lib/state'
 import { useDirector } from '../../hooks/useDirector'
-import { STYLE_LABELS, inferStyle } from '../../lib/director'
+import { STYLE_LABELS, inferStyle, parseInstructions } from '../../lib/director'
 import type { StyleKey } from '../../lib/director'
 import { useAriaAnnouncer } from '../accessibility/AriaAnnouncer'
 
@@ -15,9 +16,18 @@ export function DirectorPanel({ projectId }: DirectorPanelProps) {
   } = useDirector(projectId)
   const { announce } = useAriaAnnouncer()
 
+  const clipsA = useClipStore((s) => s.clips[projectId]?.A ?? [])
+  const clipsB = useClipStore((s) => s.clips[projectId]?.B ?? [])
+
   const isBusy = status === 'analyzing' || status === 'planning' || status === 'executing'
 
-  const inferredStyle = inferStyle('general', instructions)
+  const inferredStyle = useMemo(() => inferStyle('general', instructions), [instructions])
+
+  const parsedDirectives = useMemo(() => {
+    if (!instructions.trim()) return []
+    const overrides = parseInstructions(instructions)
+    return overrides.parsedDirectives
+  }, [instructions])
 
   const handleGenerate = useCallback(() => {
     generatePlan()
@@ -32,6 +42,12 @@ export function DirectorPanel({ projectId }: DirectorPanelProps) {
   return (
     <section role="region" aria-label="AI Director" className="space-y-3">
       <h2 className="text-sm font-semibold text-gray-300">AI Director</h2>
+
+      <div className="flex gap-3 text-[10px] text-gray-500">
+        <span>{clipsA.length} main clip{clipsA.length !== 1 ? 's' : ''} (Slot A)</span>
+        <span>&middot;</span>
+        <span>{clipsB.length} overlay clip{clipsB.length !== 1 ? 's' : ''} (Slot B)</span>
+      </div>
 
       <div className="space-y-1">
         <label htmlFor="director-instructions" className="text-xs text-gray-500">
@@ -50,6 +66,15 @@ export function DirectorPanel({ projectId }: DirectorPanelProps) {
           <p className="text-[10px] text-gray-500">
             Suggested style based on your instructions: <span className="text-sky-400">{STYLE_LABELS[inferredStyle]}</span>
           </p>
+        )}
+        {parsedDirectives.length > 0 && (
+          <div className="flex flex-wrap gap-1">
+            {parsedDirectives.map((d, i) => (
+              <span key={i} className="rounded bg-violet-900/40 px-1.5 py-0.5 text-[9px] text-violet-300">
+                {d.type.replace(/-/g, ' ')}: {d.value}
+              </span>
+            ))}
+          </div>
         )}
       </div>
 
@@ -130,6 +155,14 @@ export function DirectorPanel({ projectId }: DirectorPanelProps) {
               <div className="flex flex-wrap gap-1">
                 {plan.contentAnalysis.keywords.slice(0, 8).map((kw, i) => (
                   <span key={i} className="rounded bg-gray-700 px-1.5 py-0.5 text-[10px] text-gray-300">{kw}</span>
+                ))}
+              </div>
+            )}
+            {plan.contentAnalysis.keySubjects.length > 0 && (
+              <div className="flex flex-wrap gap-1">
+                <span className="text-[9px] text-gray-500">Subjects:</span>
+                {plan.contentAnalysis.keySubjects.slice(0, 5).map((s, i) => (
+                  <span key={i} className="rounded bg-sky-900/40 px-1.5 py-0.5 text-[9px] text-sky-300">{s}</span>
                 ))}
               </div>
             )}

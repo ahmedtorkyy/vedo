@@ -1,15 +1,57 @@
 import type { ContentAnalysis, HookInfo } from './types'
 
 const CATEGORY_KEYWORDS: Record<string, string[]> = {
-  tutorial: ['how to', 'step', 'guide', 'learn', 'beginner', 'tutorial', 'follow along'],
-  review: ['review', 'unboxing', 'first look', 'honest', 'worth it', 'compared'],
-  educational: ['explain', 'science', 'history', 'theory', 'research', 'study', 'analysis'],
-  entertainment: ['funny', 'challenge', 'prank', 'reaction', 'try not to laugh'],
-  vlog: ['vlog', 'daily', 'day in the life', 'weekend', 'travel'],
-  podcast: ['welcome back', 'episode', 'conversation', 'discuss', 'interview'],
-  cooking: ['recipe', 'ingredients', 'cook', 'bake', 'kitchen', 'delicious', 'taste'],
-  gaming: ['gameplay', 'walkthrough', 'lets play', 'gaming', 'stream'],
-  tech: ['specs', 'review', 'features', 'benchmark', 'performance', 'setup'],
+  tutorial: [
+    'how to', 'step', 'guide', 'learn', 'beginner', 'tutorial', 'follow along',
+    'كيف', 'شرح', 'تعلم', 'درس', 'دورة', 'طريقة', 'خطوة',
+  ],
+  educational: [
+    'explain', 'science', 'history', 'theory', 'research', 'study', 'analysis',
+    'علم', 'تاريخ', 'نظرية', 'بحث', 'دراسة', 'تحليل', 'تعليم',
+  ],
+  entertainment: [
+    'funny', 'challenge', 'prank', 'reaction', 'try not to laugh',
+    'مضحك', 'تحدي', 'مقلب', 'تفاعل', 'ضحك',
+  ],
+  vlog: [
+    'vlog', 'daily', 'day in the life', 'weekend', 'travel',
+    'يوميات', 'يوم في', 'رحلة', 'سفر', 'روتين',
+  ],
+  podcast: [
+    'welcome back', 'episode', 'conversation', 'discuss', 'interview',
+    'حوار', 'نقاش', 'مقابلة', 'حديث', 'لقاء', 'حلقة',
+  ],
+  cooking: [
+    'recipe', 'ingredients', 'cook', 'bake', 'kitchen', 'delicious', 'taste',
+    'وصفة', 'مقادير', 'طبخ', 'مطبخ', 'لذيذ', 'طعم', 'اكل',
+  ],
+  'food-review': [
+    'restaurant review', 'food review', 'dish review', 'taste test',
+    'cuisine', 'dining', 'meal', 'eating review', 'تقييم مطعم', 'مراجعة اكل',
+  ],
+  'tech-review': [
+    'tech review', 'smartphone review', 'laptop review', 'gadget review',
+    'camera review', 'app review', 'software review', 'benchmark',
+    'مراجعة تقنية', 'تقييم هاتف', 'مواصفات',
+  ],
+  'product-review': [
+    'product review', 'honest review of', 'amazon review', 'buying guide',
+    'unboxing review', 'review of the', 'purchase review', 'quality review',
+    'مراجعة منتج', 'تقييم منتج', 'جودة المنتج',
+  ],
+  'general-review': [
+    'review', 'rating', 'first look', 'my thoughts', 'overview',
+    'worth it', 'compared', 'reviewer', 'reviewing',
+    'مراجعة', 'تقييم', 'انطباع',
+  ],
+  gaming: [
+    'gameplay', 'walkthrough', 'lets play', 'gaming', 'stream',
+    'لعبة', 'تسريح', 'جيمينج', 'بث', 'ستريم',
+  ],
+  tech: [
+    'specs', 'features', 'performance', 'setup', 'device', 'gadget',
+    'مواصفات', 'مميزات', 'اداء', 'تقنية', 'اجهزة', 'هاتف', 'كمبيوتر',
+  ],
 }
 
 const HOOK_PATTERNS = [
@@ -32,6 +74,23 @@ const HOOK_PATTERNS = [
   /^(the )?first thing/i,
 ]
 
+const IMPORTANT_WORDS = new Set([
+  'important', 'crucial', 'key', 'essential', 'significant', 'best',
+  'worst', 'amazing', 'incredible', 'unbelievable', 'shocking',
+  'surprising', 'secret', 'warning', 'tip', 'trick', 'hack',
+  'number one', 'top', 'recommend', 'guaranteed', 'finally',
+  'breakthrough', 'exclusive', 'never', 'always', 'must',
+  'مهم', 'ضروري', 'اساسي', 'افضل', 'اسوء', 'مذهل', 'سر', 'نصيحة',
+])
+
+const EMOTIONAL_WORDS: Record<string, string[]> = {
+  excitement: ['amazing', 'incredible', 'awesome', 'wow', 'love', 'best', 'perfect', 'fantastic', 'رائع', 'مذهل', 'جميل'],
+  surprise: ['wow', 'unbelievable', 'shocking', 'surprising', 'no way', 'really', 'what', 'مستحيل', 'صدمة', 'حقا'],
+  frustration: ['ugh', 'frustrating', 'annoying', 'terrible', 'worst', 'hate', 'awful', 'سيء', 'مزعج', 'اخطأ'],
+  humor: ['funny', 'hilarious', 'laugh', 'joke', 'crazy', 'ridiculous', 'مضحك', 'هزار', 'جنون'],
+  seriousness: ['important', 'serious', 'critical', 'urgent', 'essential', 'must', 'مهم', 'خطير', 'عاجل'],
+}
+
 export function analyzeContent(
   segments: { start: number; end: number; text: string }[],
   duration: number,
@@ -46,8 +105,8 @@ export function analyzeContent(
   const structure = analyzeStructure(segments, duration, fullText)
   const importantMoments = detectImportantMoments(segments, fullText, keywords)
   const emotionalMoments = detectEmotionalMoments(segments)
-  const keySubjects = extractSubjects(fullText)
-  const keyObjects = extractObjects(fullText, keywords)
+  const keySubjects = extractSubjects(segments, fullText)
+  const keyObjects = extractObjects(fullText, keywords, segments)
 
   return {
     topic,
@@ -82,20 +141,34 @@ function inferTopic(text: string, fileName?: string): string {
 }
 
 function inferCategory(text: string): string {
+  const isReviewRelated =
+    /\b(review|rating|unboxing|first.look|مراجعة|تقييم)\b/i.test(text)
+
   let bestCategory = 'general'
   let bestScore = 0
 
   for (const [category, keywords] of Object.entries(CATEGORY_KEYWORDS)) {
+    if (category.endsWith('-review') && !isReviewRelated) continue
+
     let score = 0
     for (const kw of keywords) {
       const regex = new RegExp(kw.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), 'gi')
       const matches = text.match(regex)
       if (matches) score += matches.length * (kw.length > 5 ? 3 : 1)
     }
+
+    if (!category.endsWith('-review') && isReviewRelated) {
+      score *= 0.5
+    }
+
     if (score > bestScore) {
       bestScore = score
       bestCategory = category
     }
+  }
+
+  if (bestScore === 0 && isReviewRelated) {
+    return 'general-review'
   }
 
   return bestCategory
@@ -114,9 +187,9 @@ function extractKeywords(text: string, count: number): string[] {
   ])
 
   const words = text
-    .replace(/[^\w\s]/g, ' ')
+    .replace(/[^\w\s\u0600-\u06FF]/g, ' ')
     .split(/\s+/)
-    .filter((w) => w.length > 3 && !stopWords.has(w.toLowerCase()))
+    .filter((w) => w.length > 2 && !stopWords.has(w.toLowerCase()))
 
   const freq: Record<string, { word: string; count: number }> = {}
   for (const word of words) {
@@ -125,10 +198,33 @@ function extractKeywords(text: string, count: number): string[] {
     freq[lower].count++
   }
 
-  return Object.values(freq)
+  const bigrams: Record<string, { phrase: string; count: number }> = {}
+  for (let i = 0; i < words.length - 1; i++) {
+    const pair = (words[i] + ' ' + words[i + 1]).toLowerCase()
+    if (!stopWords.has(words[i].toLowerCase()) || !stopWords.has(words[i + 1].toLowerCase())) {
+      if (!bigrams[pair]) bigrams[pair] = { phrase: words[i] + ' ' + words[i + 1], count: 0 }
+      bigrams[pair].count++
+    }
+  }
+
+  const topWords = Object.values(freq)
     .sort((a, b) => b.count - a.count)
     .slice(0, count)
-    .map((f) => f.word)
+
+  const topBigrams = Object.values(bigrams)
+    .sort((a, b) => b.count - a.count)
+    .slice(0, 5)
+    .map((b) => b.phrase)
+
+  const result = topWords.map((f) => f.word)
+  for (const bg of topBigrams) {
+    const bgLower = bg.toLowerCase()
+    if (!result.some((w) => bgLower.includes(w.toLowerCase()))) {
+      result.push(bg)
+    }
+  }
+
+  return result.slice(0, count)
 }
 
 function analyzeStructure(
@@ -191,23 +287,16 @@ function detectImportantMoments(
   keywords: string[],
 ): ContentAnalysis['importantMoments'] {
   const moments: ContentAnalysis['importantMoments'] = []
-  const importantWords = new Set([
-    'important', 'crucial', 'key', 'essential', 'significant', 'best',
-    'worst', 'amazing', 'incredible', 'unbelievable', 'shocking',
-    'surprising', 'secret', 'warning', 'tip', 'trick', 'hack',
-    'number one', 'top', 'recommend', 'guaranteed', 'finally',
-    'breakthrough', 'exclusive', 'never', 'always', 'must',
-  ])
 
   for (const seg of segments) {
     const text = seg.text.toLowerCase()
-    for (const word of importantWords) {
+    for (const word of IMPORTANT_WORDS) {
       const regex = new RegExp(word.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), 'i')
       if (regex.test(text)) {
         moments.push({
           time: seg.start,
           description: text.slice(0, 80).trim(),
-          confidence: word.length > 5 ? 0.7 : 0.5,
+          confidence: word.length > 4 ? 0.7 : 0.5,
         })
         break
       }
@@ -218,15 +307,19 @@ function detectImportantMoments(
     const regex = new RegExp(`\\b${kw.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}\\b`, 'gi')
     const matches = [...fullText.matchAll(regex)]
     if (matches.length === 1) {
-      const seg = segments.find(
-        (s) => s.start <= (matches[0].index ?? 0) / fullText.length * (segments[segments.length - 1]?.end ?? 1) && s.end >= (matches[0].index ?? 0) / fullText.length * (segments[segments.length - 1]?.end ?? 1),
-      )
-      if (seg && !moments.some((m) => Math.abs(m.time - seg.start) < 1)) {
-        moments.push({
-          time: seg.start,
-          description: `Key term: "${kw}"`,
-          confidence: 0.5,
-        })
+      const lastSeg = segments[segments.length - 1]
+      if (lastSeg) {
+        const approxTime = ((matches[0].index ?? 0) / fullText.length) * lastSeg.end
+        const seg = segments.find(
+          (s) => s.start <= approxTime && s.end >= approxTime,
+        )
+        if (seg && !moments.some((m) => Math.abs(m.time - seg.start) < 1)) {
+          moments.push({
+            time: seg.start,
+            description: `Key term: "${kw}"`,
+            confidence: 0.5,
+          })
+        }
       }
     }
   }
@@ -237,19 +330,11 @@ function detectImportantMoments(
 function detectEmotionalMoments(
   segments: { start: number; end: number; text: string }[],
 ): ContentAnalysis['emotionalMoments'] {
-  const emotionalWords: Record<string, string[]> = {
-    excitement: ['amazing', 'incredible', 'awesome', 'wow', 'love', 'best', 'perfect', 'fantastic'],
-    surprise: ['wow', 'unbelievable', 'shocking', 'surprising', 'no way', 'really', 'what'],
-    frustration: ['ugh', 'frustrating', 'annoying', 'terrible', 'worst', 'hate', 'awful'],
-    humor: ['funny', 'hilarious', 'laugh', 'joke', 'crazy', 'ridiculous'],
-    seriousness: ['important', 'serious', 'critical', 'urgent', 'essential', 'must'],
-  }
-
   const moments: ContentAnalysis['emotionalMoments'] = []
 
   for (const seg of segments) {
     const text = seg.text.toLowerCase()
-    for (const [emotion, words] of Object.entries(emotionalWords)) {
+    for (const [emotion, words] of Object.entries(EMOTIONAL_WORDS)) {
       for (const word of words) {
         if (text.includes(word)) {
           moments.push({
@@ -266,54 +351,167 @@ function detectEmotionalMoments(
   return moments.sort((a, b) => a.time - b.time)
 }
 
-function extractSubjects(text: string): string[] {
-  const sentences = text.split(/[.!?]+/).filter(Boolean)
+const PROPER_NOUN_PATTERNS = [
+  /(?:this is|meet|introducing|welcome|here's|here is|say hello to) (\w+(?:\s\w+)?)/i,
+  /(?:my name is|i'm|i am) (\w+(?:\s\w+)?)/i,
+  /(?:check out|try|use|get) (?:the |a |an )?(\w+(?:\s\w+)?)/i,
+  /(?:have you (?:tried|seen|used|heard of) )(\w+(?:\s\w+)?)/i,
+  /(?:the best|the worst|the most) (\w+(?:\s\w+)?)/i,
+]
+
+const KNOWN_ENTITY_PATTERNS = [
+  /(?:iPhone|iPad|Mac|Windows|Android|Samsung|Google|Apple|Microsoft|Amazon|Netflix|Spotify|PlayStation|Xbox|Nintendo)/gi,
+  /(?:React|Node|Python|JavaScript|TypeScript|Docker|Kubernetes|AWS|Vue|Angular)/gi,
+  /(?:YouTube|TikTok|Instagram|Twitter|Facebook|Snapchat|Reddit|Discord)/gi,
+  /(?:Tesla|Toyota|Honda|BMW|Mercedes|Ford|Nike|Adidas|Puma)/gi,
+  /(?:[A-Z][a-z]+ (?:Pro|Max|Ultra|Air|Mini|Plus|X|S|XL|LTE|5G|HD|4K))/g,
+]
+
+function extractSubjects(
+  segments: { start: number; end: number; text: string }[],
+  fullText: string,
+): string[] {
   const subjects: string[] = []
 
-  for (const sentence of sentences.slice(0, 10)) {
-    const words = sentence.trim().split(/\s+/)
-    if (words.length >= 2) {
-      const firstTwo = words.slice(0, 2).join(' ')
-      if (!['the ', 'a ', 'an ', 'so ', 'and '].some((p) => firstTwo.toLowerCase().startsWith(p))) {
-        const candidate = words[0].replace(/[^a-zA-Z]/g, '')
-        if (candidate.length > 2) subjects.push(candidate)
+  const knownEntities: string[] = []
+  for (const pattern of KNOWN_ENTITY_PATTERNS) {
+    const matches = [...fullText.matchAll(pattern)]
+    for (const m of matches) {
+      knownEntities.push(m[0])
+    }
+  }
+
+  for (const pattern of PROPER_NOUN_PATTERNS) {
+    for (const seg of segments) {
+      const matches = [...seg.text.matchAll(pattern)]
+      for (const m of matches) {
+        const candidate = (m[1] ?? '').trim()
+        if (candidate.length > 2 && !/^(the|a|an|this|that|it|and|or|so|for)$/i.test(candidate)) {
+          subjects.push(candidate)
+        }
       }
     }
   }
 
+  const sentences = fullText.split(/[.!?]+/).filter(Boolean)
+  for (const sentence of sentences) {
+    const words = sentence.trim().split(/\s+/)
+    if (words.length < 3) continue
+
+    const firstWord = words[0].replace(/[^a-zA-Z\u0600-\u06FF]/g, '')
+    const secondWord = words[1]?.replace(/[^a-zA-Z\u0600-\u06FF]/g, '')
+
+    if (
+      firstWord.length > 2 &&
+      !/^(the|a|an|so|and|but|or|if|when|while|because|however|therefore)$/i.test(firstWord) &&
+      /^[A-Z\u0600-\u06FF]/.test(firstWord)
+    ) {
+      subjects.push(firstWord)
+      if (secondWord && secondWord.length > 2 && /^[a-z]/.test(secondWord) === false) {
+        subjects.push(firstWord + ' ' + secondWord)
+      }
+    }
+
+    const capitalizedWords = words
+      .filter((w) => /^[A-Z][a-z]/.test(w) && w.length > 2)
+      .slice(0, 3)
+    for (const cw of capitalizedWords) {
+      const cleaned = cw.replace(/[^a-zA-Z\u0600-\u06FF]/g, '')
+      if (cleaned.length > 2) subjects.push(cleaned)
+    }
+  }
+
+  const bigramFreq: Record<string, { phrase: string; count: number }> = {}
+  for (let i = 0; i < sentences.length; i++) {
+    const words = sentences[i].trim().split(/\s+/)
+    for (let j = 0; j < words.length - 1; j++) {
+      const w1 = words[j].replace(/[^a-zA-Z\u0600-\u06FF]/g, '')
+      const w2 = words[j + 1].replace(/[^a-zA-Z\u0600-\u06FF]/g, '')
+      if (w1.length > 2 && w2.length > 2) {
+        const pair = (w1 + ' ' + w2).toLowerCase()
+        if (!bigramFreq[pair]) bigramFreq[pair] = { phrase: w1 + ' ' + w2, count: 0 }
+        bigramFreq[pair].count++
+      }
+    }
+  }
+
+  const frequentBigrams = Object.values(bigramFreq)
+    .filter((b) => b.count >= 2)
+    .sort((a, b) => b.count - a.count)
+    .slice(0, 4)
+    .map((b) => b.phrase)
+
+  const allCandidates = [...knownEntities, ...subjects, ...frequentBigrams]
   const freq: Record<string, number> = {}
-  for (const s of subjects) {
+  for (const s of allCandidates) {
     const lower = s.toLowerCase()
     freq[lower] = (freq[lower] ?? 0) + 1
   }
 
   return Object.entries(freq)
     .sort((a, b) => b[1] - a[1])
-    .slice(0, 5)
-    .map(([word]) => word)
+    .slice(0, 8)
+    .map(([word]) => {
+      const original = allCandidates.find((c) => c.toLowerCase() === word)
+      return original ?? word
+    })
 }
 
-function extractObjects(text: string, keywords: string[]): string[] {
+function extractObjects(
+  text: string,
+  keywords: string[],
+  segments: { start: number; end: number; text: string }[],
+): string[] {
   const objects: string[] = []
+
   const patterns = [
-    /(?:the|a|an|this|that) (\w+ (?:is|was|has|looks|feels))/gi,
-    /(?:check (?:out|this) )(\w+)/gi,
-    /(?:here('s| is) )(?:the|a|an) (\w+)/gi,
-    /(?:let me show you )(?:the|a|an) (\w+)/gi,
-    /(?:this is )(?:the|a|an) (\w+)/gi,
+    /(?:the|a|an|this|that) (\w+(?:\s\w+)?) (?:is|was|has|looks|feels|costs|measures|weighs)/gi,
+    /(?:check (?:out|this) )(\w+(?:\s\w+)?)/gi,
+    /(?:here('s| is) )(?:the|a|an) (\w+(?:\s\w+)?)/gi,
+    /(?:let me show you )(?:the|a|an) (\w+(?:\s\w+)?)/gi,
+    /(?:this is )(?:the|a|an) (\w+(?:\s\w+)?)/gi,
+    /(?:it (?:has|comes with|includes|features) )(?:a |an |the )?(\w+(?:\s\w+)?)/gi,
+    /(?:you (?:get|have|need|can use) )(?:a |an |the )?(\w+(?:\s\w+)?)/gi,
+    /(?:it('s| is) (?:made of|powered by|built with) )(\w+(?:\s\w+)?)/gi,
   ]
 
   for (const p of patterns) {
     const matches = [...text.matchAll(p)]
     for (const m of matches) {
-      const obj = (m[1] ?? m[2] ?? '').replace(/[^a-zA-Z\s]/g, '').trim()
-      if (obj.length > 3) objects.push(obj)
+      const obj = (m[1] ?? m[2] ?? '').replace(/[^a-zA-Z0-9\s\u0600-\u06FF]/g, '').trim()
+      if (obj.length > 2 && !/^(the|a|an|this|that|it|and|or|for|but)$/i.test(obj)) {
+        objects.push(obj)
+      }
     }
   }
 
-  const uniqueObjects = [...new Set(objects)]
+  if (segments.length > 0) {
+    for (const seg of segments.slice(0, 20)) {
+      for (const pattern of KNOWN_ENTITY_PATTERNS) {
+        const matches = [...seg.text.matchAll(pattern)]
+        for (const m of matches) {
+          objects.push(m[0])
+        }
+      }
+    }
+  }
+
+  const freq: Record<string, number> = {}
+  for (const obj of objects) {
+    const lower = obj.toLowerCase()
+    freq[lower] = (freq[lower] ?? 0) + 1
+  }
+
+  const uniqueObjects = Object.entries(freq)
+    .sort((a, b) => b[1] - a[1])
+    .map(([_, __], i, arr) => {
+      const original = [...new Set(objects)][i]
+      return original
+    })
+    .filter(Boolean)
+
   const all = [...uniqueObjects, ...keywords.filter((k) => !uniqueObjects.includes(k))]
-  return all.slice(0, 8)
+  return [...new Set(all)].slice(0, 10)
 }
 
 export function detectHooks(

@@ -1,7 +1,8 @@
 export type {
   StyleKey, StyleProfile, ContentAnalysis, EditDecision, EditPlan,
   DirectorState, HookInfo, ZoomLevel, TransitionLevel, EffectsLevel,
-  PacingLevel, OverlayFrequency,
+  PacingLevel, OverlayFrequency, InstructionOverrides, OverlayPlacement,
+  OverlayDecision, CombinedTimeline,
 } from './types'
 export { analyzeContent, detectHooks } from './content-analyzer'
 export {
@@ -13,3 +14,5 @@ export type { RetentionAnalysis } from './retention-engine'
 export { createEditPlan } from './edit-planner'
 export type { PlannerInput } from './edit-planner'
 export { useDirectorStore } from './director-store'
+export { parseInstructions, mergeOverrides } from './instruction-parser'
+export { determineOverlayDecisions } from './overlay-engine'

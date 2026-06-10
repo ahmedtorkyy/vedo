@@ -2,7 +2,7 @@ import { useCallback } from 'react'
 import { useClipStore, useProjectStore } from '../lib/state'
 import { useTranscriptionStore } from '../lib/transcription'
 import { useEditingStore } from '../lib/editing'
-import { useDirectorStore, analyzeContent, detectHooks, analyzeRetention, createEditPlan, inferStyle } from '../lib/director'
+import { useDirectorStore, analyzeContent, detectHooks, analyzeRetention, createEditPlan } from '../lib/director'
 import type { StyleKey, PlannerInput } from '../lib/director'
 
 export function useDirector(projectId: string) {
@@ -35,9 +35,44 @@ export function useDirector(projectId: string) {
       const transcription = useTranscriptionStore.getState().results
       const editing = useEditingStore.getState().analysis
 
-      const firstClipId = clipsA[0]?.id
-      const segments = transcription[firstClipId ?? '']?.segments ?? []
-      const silenceSegments = editing[firstClipId ?? '']?.silenceSegments ?? []
+      const clipOffsets: { clipId: string; offsetStart: number; offsetEnd: number }[] = []
+      const combinedSegments: { start: number; end: number; text: string }[] = []
+      const combinedSilence: { start: number; end: number; duration: number; confidence: number }[] = []
+      let cumulativeOffset = 0
+
+      for (const clip of clipsA) {
+        const clipTranscription = transcription[clip.id]
+        const clipAnalysis = editing[clip.id]
+
+        const offsetStart = cumulativeOffset
+        const offsetEnd = cumulativeOffset + clip.duration
+        clipOffsets.push({ clipId: clip.id, offsetStart, offsetEnd })
+
+        if (clipTranscription?.segments) {
+          for (const seg of clipTranscription.segments) {
+            combinedSegments.push({
+              start: seg.start + cumulativeOffset,
+              end: seg.end + cumulativeOffset,
+              text: seg.text,
+            })
+          }
+        }
+
+        if (clipAnalysis?.silenceSegments) {
+          for (const sil of clipAnalysis.silenceSegments) {
+            combinedSilence.push({
+              start: sil.start + cumulativeOffset,
+              end: sil.end + cumulativeOffset,
+              duration: sil.duration,
+              confidence: sil.confidence,
+            })
+          }
+        }
+
+        cumulativeOffset += clip.duration
+      }
+
+      const totalDuration = clipsA.reduce((sum, c) => sum + c.duration, 0)
 
       const currentInstructions = useDirectorStore.getState().state[projectId]?.instructions ?? ''
       const currentStyle = useDirectorStore.getState().state[projectId]?.selectedStyle ?? 'professional'
@@ -45,19 +80,19 @@ export function useDirector(projectId: string) {
       directorStore.setStatus(projectId, 'planning')
 
       const contentAnalysis = analyzeContent(
-        segments,
-        clipsA.reduce((sum, c) => sum + c.duration, 0),
-        clipsA[0]?.fileName,
+        combinedSegments,
+        totalDuration,
+        clipsA.length === 1 ? clipsA[0]?.fileName : undefined,
       )
 
-      const hooks = detectHooks(segments)
+      const hooks = detectHooks(combinedSegments)
 
       const retention = analyzeRetention(
-        segments,
+        combinedSegments,
         contentAnalysis,
         hooks,
-        silenceSegments,
-        clipsA.reduce((sum, c) => sum + c.duration, 0),
+        combinedSilence,
+        totalDuration,
       )
 
       const input: PlannerInput = {
@@ -72,7 +107,8 @@ export function useDirector(projectId: string) {
         })),
         contentAnalysis,
         retention,
-        transcription: segments,
+        transcription: combinedSegments,
+        clipOffsets,
       }
 
       const editPlan = createEditPlan(input)
@@ -85,7 +121,6 @@ export function useDirector(projectId: string) {
   const executePlan = useCallback(async () => {
     directorStore.setStatus(projectId, 'executing')
     try {
-      // Future: connect to FFmpeg worker for execution
       await new Promise((resolve) => setTimeout(resolve, 500))
       directorStore.setStatus(projectId, 'done')
     } catch (err) {

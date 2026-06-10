@@ -82,6 +82,33 @@ export const STYLE_PROFILES: Record<StyleKey, StyleProfile> = {
     motionIntensity: 0.5,
     transitionPreference: 'dissolve',
   },
+  'tech-review': {
+    zoom: 'medium',
+    transitions: 'minimal',
+    effects: 'subtle',
+    pacing: 'moderate',
+    overlayFrequency: 'frequent',
+    motionIntensity: 0.3,
+    transitionPreference: 'dissolve',
+  },
+  'product-review': {
+    zoom: 'medium',
+    transitions: 'light',
+    effects: 'balanced',
+    pacing: 'moderate',
+    overlayFrequency: 'moderate',
+    motionIntensity: 0.35,
+    transitionPreference: 'dissolve',
+  },
+  'general-review': {
+    zoom: 'soft',
+    transitions: 'minimal',
+    effects: 'subtle',
+    pacing: 'moderate',
+    overlayFrequency: 'moderate',
+    motionIntensity: 0.25,
+    transitionPreference: 'dissolve',
+  },
   gaming: {
     zoom: 'aggressive',
     transitions: 'dynamic',
@@ -139,18 +166,23 @@ export function inferStyle(
   if (/(?:luxury|premium|high.?end)/i.test(lower)) return 'luxury'
   if (/(?:podcast|interview|conversation)/i.test(lower)) return 'podcast'
   if (/(?:gaming|gameplay|stream)/i.test(lower)) return 'gaming'
-  if (/(?:food|recipe|cooking|review)/i.test(lower)) return 'food-review'
+  if (/(?:food.?review|recipe|cooking|restaurant)/i.test(lower)) return 'food-review'
+  if (/(?:tech.?review|specs|benchmark|gadget)/i.test(lower)) return 'tech-review'
+  if (/(?:product.?review|honest review|buying guide)/i.test(lower)) return 'product-review'
 
   switch (category) {
     case 'tutorial': return 'educational'
-    case 'review': return 'professional'
+    case 'food-review': return 'food-review'
+    case 'tech-review': return 'tech-review'
+    case 'product-review': return 'product-review'
+    case 'general-review': return 'general-review'
     case 'educational': return 'educational'
     case 'entertainment': return 'vlog'
     case 'vlog': return 'vlog'
     case 'podcast': return 'podcast'
     case 'cooking': return 'food-review'
     case 'gaming': return 'gaming'
-    case 'tech': return 'professional'
+    case 'tech': return 'tech-review'
     default: return 'professional'
   }
 }
@@ -192,6 +224,9 @@ export const STYLE_LABELS: Record<StyleKey, string> = {
   podcast: 'Podcast',
   vlog: 'Vlog',
   'food-review': 'Food Review',
+  'tech-review': 'Tech Review',
+  'product-review': 'Product Review',
+  'general-review': 'General Review',
   gaming: 'Gaming',
   tiktok: 'TikTok',
   shorts: 'Shorts',
