@@ -53,4 +53,15 @@ export class AudioOrchestrator {
       this.gainNodes.delete(clipId);
     }
   }
+
+  dispose() {
+    for (const [, node] of this.gainNodes) {
+      node.disconnect();
+    }
+    this.gainNodes.clear();
+    if (this.ctx && this.ctx.state !== 'closed') {
+      this.ctx.close();
+      this.ctx = null;
+    }
+  }
 }

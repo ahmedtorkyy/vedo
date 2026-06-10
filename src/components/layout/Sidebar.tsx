@@ -1,4 +1,5 @@
 import { useProjectStore, useClipStore, useHistoryStore } from '../../lib/state'
+import { useTranscriptionStore } from '../../lib/transcription'
 import { ProjectList } from './ProjectList'
 import { NewProjectDialog } from './NewProjectDialog'
 import { useState } from 'react'
@@ -44,6 +45,8 @@ export function Sidebar({ onProjectChange }: SidebarProps) {
 
     useClipStore.getState().removeProjectData(id)
     useClipStore.getState().setConcatStatus('idle')
+
+    useTranscriptionStore.getState().clearAll()
 
     useHistoryStore.getState().clear()
 

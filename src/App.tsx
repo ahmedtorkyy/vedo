@@ -7,6 +7,7 @@ import { SlotA, SlotB } from './components/ingestion'
 import { PreviewPlayer } from './components/player'
 import { TranscriptionPanel } from './components/transcription'
 import { AriaAnnouncerProvider, useAriaAnnouncer } from './components/accessibility/AriaAnnouncer'
+import { AudioOrchestrator } from './lib/audio'
 import { saveSessionSnapshot, restoreSession } from './lib/session/session-recovery'
 
 type WorkspaceTab = 'slota' | 'slotb' | 'preview' | 'transcription'
@@ -144,6 +145,7 @@ function App() {
 
   useEffect(() => {
     restoreSession()
+    return () => { AudioOrchestrator.getInstance().dispose() }
   }, [])
 
   useEffect(() => {

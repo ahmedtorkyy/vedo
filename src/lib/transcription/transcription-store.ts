@@ -1,4 +1,5 @@
 import { create } from 'zustand'
+import { persist } from 'zustand/middleware'
 import type { TranscriptionResult, TranscriptionSegment } from '../../types'
 
 interface TranscriptionStore {
@@ -10,7 +11,9 @@ interface TranscriptionStore {
   clearAll: () => void
 }
 
-export const useTranscriptionStore = create<TranscriptionStore>((set) => ({
+export const useTranscriptionStore = create<TranscriptionStore>()(
+  persist(
+    (set) => ({
   results: {},
 
   setStatus: (clipId, status) =>
@@ -54,4 +57,7 @@ export const useTranscriptionStore = create<TranscriptionStore>((set) => ({
     }),
 
   clearAll: () => set({ results: {} }),
-}))
+    }),
+    { name: 'vedo-transcriptions' }
+  )
+)
