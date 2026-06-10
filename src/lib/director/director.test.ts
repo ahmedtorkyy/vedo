@@ -1,8 +1,10 @@
 import { describe, it, expect } from 'vitest'
-import { splitRegionAcrossClips, globalToLocal } from './edit-planner'
+import { splitRegionAcrossClips, globalToLocal, createEditPlan } from './edit-planner'
 import { parseInstructions } from './instruction-parser'
 import { matchKeyword } from './overlay-engine'
 import { detectHooks } from './content-analyzer'
+import type { ContentAnalysis } from './types'
+import type { RetentionAnalysis } from './retention-engine'
 
 const CLIPS = [
   { id: 'clip1', fileName: 'intro.mp4', duration: 10, slot: 'A' as const },
@@ -294,5 +296,80 @@ describe('overlay splitting across clips', () => {
     const result = splitRegionAcrossClips(-2, 5, CLIPS, CLIP_OFFSETS)
     expect(result).toHaveLength(1)
     expect(result[0]).toEqual({ clipId: 'clip1', localStart: 0, localEnd: 5 })
+  })
+})
+
+// --- Integration: overlay splitting through createEditPlan ---
+describe('createEditPlan overlay cross-clip integration', () => {
+  it('splits overlay decisions across clip boundaries through the full pipeline', () => {
+    const clips = [
+      { id: 'clip1', fileName: 'intro.mp4', duration: 10, slot: 'A' as const },
+      { id: 'clip2', fileName: 'main.mp4', duration: 10, slot: 'A' as const },
+      { id: 'banner', fileName: 'graphic-banner.mp4', duration: 20, slot: 'B' as const },
+    ]
+
+    const clipOffsets = [
+      { clipId: 'clip1', offsetStart: 0, offsetEnd: 10 },
+      { clipId: 'clip2', offsetStart: 10, offsetEnd: 20 },
+    ]
+
+    const segments = [
+      { start: 0, end: 3, text: 'welcome to the show today' },
+      { start: 3, end: 6, text: 'we are talking about technology' },
+      { start: 6, end: 9, text: 'let me show you something interesting' },
+      { start: 9, end: 11, text: 'this part spans the boundary' },
+      { start: 11, end: 14, text: 'more content in the second part' },
+      { start: 14, end: 17, text: 'wrapping things up right now' },
+    ]
+
+    const contentAnalysis: ContentAnalysis = {
+      topic: 'Technology',
+      category: 'tech-review',
+      keywords: [],
+      structure: { hook: null, setup: null, mainContent: null, conclusion: null },
+      importantMoments: [
+        { time: 9.5, description: 'Cross-boundary moment', confidence: 0.85 },
+      ],
+      emotionalMoments: [],
+      keySubjects: [],
+      keyObjects: [],
+    }
+
+    const retention: RetentionAnalysis = {
+      lowEnergyRegions: [],
+      highValueMoments: [],
+      repetitiveRegions: [],
+      topicChanges: [],
+    }
+
+    const plan = createEditPlan({
+      projectId: 'test-overlay-split',
+      instructions: '',
+      selectedStyle: 'tech-review',
+      clips,
+      contentAnalysis,
+      retention,
+      transcription: segments,
+      clipOffsets,
+    })
+
+    const overlayDecisions = plan.decisions.filter((d) => d.type === 'overlay')
+    expect(overlayDecisions).toHaveLength(2)
+
+    const clip1Overlay = overlayDecisions.find((d) => d.clipId === 'clip1')
+    const clip2Overlay = overlayDecisions.find((d) => d.clipId === 'clip2')
+
+    expect(clip1Overlay).toBeDefined()
+    expect(clip2Overlay).toBeDefined()
+
+    expect(clip1Overlay!.startTime).toBeCloseTo(8.7, 1)
+    expect(clip1Overlay!.endTime).toBeCloseTo(10, 1)
+
+    expect(clip2Overlay!.startTime).toBeCloseTo(0, 1)
+    expect(clip2Overlay!.endTime).toBeCloseTo(1.5, 1)
+
+    const clip1Duration = clip1Overlay!.endTime - clip1Overlay!.startTime
+    const clip2Duration = clip2Overlay!.endTime - clip2Overlay!.startTime
+    expect(clip1Duration + clip2Duration).toBeCloseTo(2.8, 1)
   })
 })
