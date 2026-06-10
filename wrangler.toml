@@ -1,0 +1,6 @@
+name = "vedo"
+pages_build_output_dir = "dist"
+compatibility_date = "2025-01-01"
+
+[pages]
+build_command = "pnpm build"
