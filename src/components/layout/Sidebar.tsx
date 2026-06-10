@@ -52,11 +52,11 @@ export function Sidebar({ onProjectChange }: SidebarProps) {
       }
     }
     await ProjectStorage.deleteProjectFolder(id)
-    await ProjectStorage.writeMetadata(id, { deleted: true })
     deleteProject(id)
     useClipStore.getState().removeProjectData(id)
     useClipStore.getState().setConcatStatus('idle')
     useHistoryStore.getState().clear()
+    try { sessionStorage.removeItem('vedo-session') } catch { /* sessionStorage may be unavailable */ }
     announce(`Deleted project ${project?.name ?? id}`)
     onProjectChange()
   }

@@ -100,9 +100,20 @@ export const useClipStore = create<ClipState>()(
       setConcatStatus: (status) => set({ concatJob: { status } }),
 
       removeProjectData: (projectId) => set((state) => {
-        const next = { ...state.clips }
-        delete next[projectId]
-        return { clips: next }
+        const nextClips = { ...state.clips }
+        const projectClips = nextClips[projectId]
+        delete nextClips[projectId]
+
+        const nextUploads = { ...state.uploads }
+        if (projectClips) {
+          for (const slot of ['A', 'B'] as const) {
+            for (const clip of projectClips[slot]) {
+              delete nextUploads[clip.id]
+            }
+          }
+        }
+
+        return { clips: nextClips, uploads: nextUploads }
       }),
     }),
     {

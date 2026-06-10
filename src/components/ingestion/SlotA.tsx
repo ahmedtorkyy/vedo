@@ -1,8 +1,9 @@
-import { useCallback, useMemo } from 'react'
+import { useCallback, useMemo, useRef } from 'react'
 import { useClipStore } from '../../lib/state'
 import { useFileUpload } from '../../hooks/useFileUpload'
 import { useAriaAnnouncer } from '../accessibility/AriaAnnouncer'
 import { ProjectStorage } from '../../lib/opfs'
+import { AudioOrchestrator } from '../../lib/audio'
 import { UploadZone } from './UploadZone'
 import { ClipCard } from './ClipCard'
 import { UploadProgress } from './UploadProgress'
@@ -18,27 +19,35 @@ export function SlotA({ projectId, onPlayClip, onConcatNeeded }: SlotAProps) {
   const concatJob = useClipStore((s) => s.concatJob)
   const uploads = useClipStore((s) => s.uploads)
   const removeClip = useClipStore((s) => s.removeClip)
+  const removeUploadProgress = useClipStore((s) => s.removeUploadProgress)
   const toggleMute = useClipStore((s) => s.toggleMute)
   const { uploadFiles } = useFileUpload()
   const { announce } = useAriaAnnouncer()
+  const lastPctRef = useRef<Record<string, number>>({})
 
   const uploadsList = useMemo(() => Object.values(uploads), [uploads])
 
   const handleFiles = useCallback((files: FileList) => {
     const count = files.length
     let completed = 0
+    const progressTracker = lastPctRef.current
     uploadFiles({
       projectId,
       slot: 'A',
       files,
       onFileStart: (name) => announce(`Uploading ${name}`, true),
       onProgress: (name, pct) => {
-        if (pct === 25 || pct === 50 || pct === 75 || pct % 100 === 0) {
-          announce(`${name}: ${pct}%`, pct === 100)
+        const last = progressTracker[name] ?? 0
+        const milestones = [25, 50, 75, 100]
+        const nextMilestone = milestones.find((m) => m > last && pct >= m)
+        if (nextMilestone) {
+          progressTracker[name] = nextMilestone
+          announce(`${name}: ${nextMilestone}%`, nextMilestone === 100)
         }
       },
       onFileComplete: (name) => {
         completed++
+        delete progressTracker[name]
         announce(`${name} complete. ${completed} of ${count} uploaded.`)
       },
       onAllComplete: () => {
@@ -67,10 +76,12 @@ export function SlotA({ projectId, onPlayClip, onConcatNeeded }: SlotAProps) {
         // file may not exist
       }
     }
+    AudioOrchestrator.getInstance().unregisterClipChannel(clipId)
+    removeUploadProgress(clipId)
     removeClip(projectId, 'A', clipId)
     announce(`Deleted ${clip?.fileName ?? 'clip'}`)
     onConcatNeeded?.()
-  }, [projectId, clips, removeClip, announce, onConcatNeeded])
+  }, [projectId, clips, removeClip, removeUploadProgress, announce, onConcatNeeded])
 
   return (
     <section role="region" aria-label="Main video clips" className="space-y-3">

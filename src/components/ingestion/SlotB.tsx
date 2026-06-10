@@ -1,8 +1,9 @@
-import { useCallback, useMemo } from 'react'
+import { useCallback, useMemo, useRef } from 'react'
 import { useClipStore } from '../../lib/state'
 import { useFileUpload } from '../../hooks/useFileUpload'
 import { useAriaAnnouncer } from '../accessibility/AriaAnnouncer'
 import { ProjectStorage } from '../../lib/opfs'
+import { AudioOrchestrator } from '../../lib/audio'
 import { UploadZone } from './UploadZone'
 import { ClipCard } from './ClipCard'
 import { UploadProgress } from './UploadProgress'
@@ -16,25 +17,35 @@ export function SlotB({ projectId, onPlayClip }: SlotBProps) {
   const clips = useClipStore((s) => s.getSlotClips(projectId, 'B'))
   const uploads = useClipStore((s) => s.uploads)
   const removeClip = useClipStore((s) => s.removeClip)
+  const removeUploadProgress = useClipStore((s) => s.removeUploadProgress)
   const toggleMute = useClipStore((s) => s.toggleMute)
   const { uploadFiles } = useFileUpload()
   const { announce } = useAriaAnnouncer()
+  const lastPctRef = useRef<Record<string, number>>({})
 
   const uploadsList = useMemo(() => Object.values(uploads), [uploads])
 
   const handleFiles = useCallback((files: FileList) => {
     const count = files.length
+    const progressTracker = lastPctRef.current
     uploadFiles({
       projectId,
       slot: 'B',
       files,
       onFileStart: (name) => announce(`Uploading overlay ${name}`, true),
       onProgress: (name, pct) => {
-        if (pct === 25 || pct === 50 || pct === 75 || pct % 100 === 0) {
-          announce(`Overlay ${name}: ${pct}%`, pct === 100)
+        const last = progressTracker[name] ?? 0
+        const milestones = [25, 50, 75, 100]
+        const nextMilestone = milestones.find((m) => m > last && pct >= m)
+        if (nextMilestone) {
+          progressTracker[name] = nextMilestone
+          announce(`Overlay ${name}: ${nextMilestone}%`, nextMilestone === 100)
         }
       },
-      onFileComplete: (name) => announce(`${name} overlay uploaded`),
+      onFileComplete: (name) => {
+        delete progressTracker[name]
+        announce(`${name} overlay uploaded`)
+      },
       onAllComplete: () => announce(`All ${count} overlay files uploaded`),
     })
   }, [projectId, uploadFiles, announce])
@@ -58,9 +69,11 @@ export function SlotB({ projectId, onPlayClip }: SlotBProps) {
         // file may not exist
       }
     }
+    AudioOrchestrator.getInstance().unregisterClipChannel(clipId)
+    removeUploadProgress(clipId)
     removeClip(projectId, 'B', clipId)
     announce(`Deleted overlay ${clip?.fileName ?? 'clip'}`)
-  }, [projectId, clips, removeClip, announce])
+  }, [projectId, clips, removeClip, removeUploadProgress, announce])
 
   return (
     <section role="region" aria-label="Floating overlays" className="space-y-3">
