@@ -46,7 +46,7 @@ export function UploadProgress({ uploads, concatStatus }: UploadProgressProps) {
 
       {hasActiveUploads && (
         <div role="status" className="sr-only">
-          {uploadingEntries.length} file{uploadingEntries.length !== 1 ? 's' : ''} uploading
+          {uploadingEntries.map((u) => `${u.fileName}: ${u.progress} percent`).join('. ')}
         </div>
       )}
 

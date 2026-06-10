@@ -12,6 +12,7 @@ export interface Clip {
   fileName: string
   fileSize: number
   filePath: string
+  opfsFilename: string
   duration: number
   muted: boolean
 }
@@ -33,3 +34,10 @@ export interface UploadProgressEntry {
   status: 'queued' | 'uploading' | 'done' | 'error'
   error?: string
 }
+
+export const SUPPORTED_MIME_TYPES = new Set([
+  'video/mp4', 'video/webm', 'video/ogg', 'video/quicktime',
+  'video/x-msvideo', 'video/x-matroska',
+  'audio/mpeg', 'audio/wav', 'audio/ogg', 'audio/webm', 'audio/mp4',
+  'image/png', 'image/jpeg', 'image/webp',
+])

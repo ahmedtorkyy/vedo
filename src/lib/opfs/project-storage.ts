@@ -1,7 +1,3 @@
-/**
- * Ultra-fast native sandboxing wrapper for Origin Private File System (OPFS).
- * Isolates high-frequency local storage tasks cleanly away from the UI thread.
- */
 export class ProjectStorage {
   private static root: FileSystemDirectoryHandle | null = null;
 
@@ -39,8 +35,52 @@ export class ProjectStorage {
     return await fileHandle.getFile();
   }
 
+  static async fileExists(projectId: string, filename: string): Promise<boolean> {
+    try {
+      const folder = await this.getProjectFolder(projectId);
+      await folder.getFileHandle(filename);
+      return true;
+    } catch {
+      return false;
+    }
+  }
+
   static async deleteFile(projectId: string, filename: string): Promise<void> {
     const folder = await this.getProjectFolder(projectId);
     await folder.removeEntry(filename);
+  }
+
+  static async deleteProjectFolder(projectId: string): Promise<void> {
+    const root = await this.getRoot();
+    try {
+      await root.removeEntry(`project_${projectId}`, { recursive: true });
+    } catch {
+      // no-op
+    }
+  }
+
+  static async writeMetadata(projectId: string, meta: Record<string, unknown>): Promise<void> {
+    const folder = await this.getProjectFolder(projectId);
+    const handle = await folder.getFileHandle('project.json', { create: true });
+    const writable = await handle.createWritable();
+    await writable.write(JSON.stringify(meta, null, 2));
+    await writable.close();
+  }
+
+  static async readMetadata(projectId: string): Promise<Record<string, unknown> | null> {
+    try {
+      const folder = await this.getProjectFolder(projectId);
+      const handle = await folder.getFileHandle('project.json');
+      const file = await handle.getFile();
+      return JSON.parse(await file.text());
+    } catch {
+      return null;
+    }
+  }
+
+  static parseOpfsPath(path: string): { projectId: string; filename: string } | null {
+    const match = path.match(/^opfs:\/\/project_([^/]+)\/(.+)$/);
+    if (!match) return null;
+    return { projectId: match[1], filename: match[2] };
   }
 }

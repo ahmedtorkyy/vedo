@@ -2,6 +2,7 @@ import { useCallback, useMemo } from 'react'
 import { useClipStore } from '../../lib/state'
 import { useFileUpload } from '../../hooks/useFileUpload'
 import { useAriaAnnouncer } from '../accessibility/AriaAnnouncer'
+import { ProjectStorage } from '../../lib/opfs'
 import { UploadZone } from './UploadZone'
 import { ClipCard } from './ClipCard'
 import { UploadProgress } from './UploadProgress'
@@ -25,18 +26,22 @@ export function SlotA({ projectId, onPlayClip, onConcatNeeded }: SlotAProps) {
 
   const handleFiles = useCallback((files: FileList) => {
     const count = files.length
+    let completed = 0
     uploadFiles({
       projectId,
       slot: 'A',
       files,
       onFileStart: (name) => announce(`Uploading ${name}`, true),
       onFileComplete: (name) => {
-        announce(`${name} uploaded successfully`)
+        completed++
+        announce(`${name} uploaded. ${completed} of ${count} complete.`)
+      },
+      onAllComplete: () => {
+        announce(`All ${count} files uploaded. Starting timeline stitch.`)
         onConcatNeeded?.()
       },
-      onAllComplete: () => announce(`All ${count} files uploaded`),
     })
-  }, [projectId, uploadFiles, announce])
+  }, [projectId, uploadFiles, announce, onConcatNeeded])
 
   const handlePlay = useCallback((clipId: string) => {
     onPlayClip?.(clipId)
@@ -48,12 +53,19 @@ export function SlotA({ projectId, onPlayClip, onConcatNeeded }: SlotAProps) {
     announce(clip?.muted ? 'Clip unmuted' : 'Clip muted')
   }, [projectId, clips, toggleMute, announce])
 
-  const handleDelete = useCallback((clipId: string) => {
+  const handleDelete = useCallback(async (clipId: string) => {
     const clip = clips.find((c) => c.id === clipId)
     removeClip(projectId, 'A', clipId)
+    if (clip) {
+      try {
+        await ProjectStorage.deleteFile(projectId, clip.opfsFilename)
+      } catch {
+        // file may not exist
+      }
+    }
     announce(`Deleted ${clip?.fileName ?? 'clip'}`)
     onConcatNeeded?.()
-  }, [projectId, clips, removeClip, announce])
+  }, [projectId, clips, removeClip, announce, onConcatNeeded])
 
   return (
     <section role="region" aria-label="Main video clips" className="space-y-3">

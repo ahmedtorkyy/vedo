@@ -1,4 +1,5 @@
 import { create } from 'zustand'
+import { persist } from 'zustand/middleware'
 import { v4 as uuid } from 'uuid'
 import type { Project } from '../../types'
 
@@ -12,42 +13,47 @@ interface ProjectStore {
   getCurrentProject: () => Project | undefined
 }
 
-export const useProjectStore = create<ProjectStore>((set, get) => ({
-  projects: [],
-  currentProjectId: null,
+export const useProjectStore = create<ProjectStore>()(
+  persist(
+    (set, get) => ({
+      projects: [],
+      currentProjectId: null,
 
-  createProject: (name: string) => {
-    const project: Project = {
-      id: uuid(),
-      name,
-      createdAt: Date.now(),
-      updatedAt: Date.now(),
-    }
-    set((s) => ({ projects: [...s.projects, project], currentProjectId: project.id }))
-    return project
-  },
+      createProject: (name: string) => {
+        const project: Project = {
+          id: uuid(),
+          name,
+          createdAt: Date.now(),
+          updatedAt: Date.now(),
+        }
+        set({ projects: [...get().projects, project], currentProjectId: project.id })
+        return project
+      },
 
-  deleteProject: (id: string) => {
-    set((s) => ({
-      projects: s.projects.filter((p) => p.id !== id),
-      currentProjectId: s.currentProjectId === id ? null : s.currentProjectId,
-    }))
-  },
+      deleteProject: (id: string) => {
+        set((s) => ({
+          projects: s.projects.filter((p) => p.id !== id),
+          currentProjectId: s.currentProjectId === id ? null : s.currentProjectId,
+        }))
+      },
 
-  renameProject: (id: string, name: string) => {
-    set((s) => ({
-      projects: s.projects.map((p) =>
-        p.id === id ? { ...p, name, updatedAt: Date.now() } : p
-      ),
-    }))
-  },
+      renameProject: (id: string, name: string) => {
+        set((s) => ({
+          projects: s.projects.map((p) =>
+            p.id === id ? { ...p, name, updatedAt: Date.now() } : p
+          ),
+        }))
+      },
 
-  setCurrentProject: (id: string | null) => {
-    set({ currentProjectId: id })
-  },
+      setCurrentProject: (id: string | null) => {
+        set({ currentProjectId: id })
+      },
 
-  getCurrentProject: () => {
-    const { projects, currentProjectId } = get()
-    return projects.find((p) => p.id === currentProjectId)
-  },
-}))
+      getCurrentProject: () => {
+        const { projects, currentProjectId } = get()
+        return projects.find((p) => p.id === currentProjectId)
+      },
+    }),
+    { name: 'vedo-projects' }
+  )
+)

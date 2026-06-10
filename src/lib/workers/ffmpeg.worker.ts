@@ -2,13 +2,12 @@ import { FFmpeg } from '@ffmpeg/ffmpeg'
 import { toBlobURL } from '@ffmpeg/util'
 
 let ffmpeg: FFmpeg | null = null
-let instanceReady = false
 
 const MEMFS_WARN_BYTES = 256 * 1024 * 1024
 const MEMFS_LIMIT_BYTES = 1.5 * 1024 * 1024 * 1024
 
 async function getFFmpeg(): Promise<FFmpeg> {
-  if (!ffmpeg) {
+    if (!ffmpeg) {
     ffmpeg = new FFmpeg()
     ffmpeg.on('progress', ({ progress }) => {
       self.postMessage({ type: 'concat-progress', progress })
@@ -24,7 +23,6 @@ async function getFFmpeg(): Promise<FFmpeg> {
       coreURL: await toBlobURL(`${base}/ffmpeg-core.js`, 'text/javascript'),
       wasmURL: await toBlobURL(`${base}/ffmpeg-core.wasm`, 'application/wasm'),
     })
-    instanceReady = true
     self.postMessage({ type: 'ffmpeg-loaded' })
   }
   return ffmpeg
@@ -34,7 +32,6 @@ function purgeMemfs(): void {
   if (ffmpeg) {
     ffmpeg.terminate()
     ffmpeg = null
-    instanceReady = false
   }
 }
 
@@ -80,8 +77,8 @@ self.onmessage = async (e: MessageEvent) => {
         await instance.deleteFile(clip.name)
       }
 
-      const resultBuf = result.buffer.slice(0)
-      self.postMessage({ type: 'concat-done', data: resultBuf }, [resultBuf])
+      const resultBuf = result.buffer.slice(0) as ArrayBuffer
+      self.postMessage({ type: 'concat-done', data: resultBuf }, { transfer: [resultBuf] })
 
       purgeMemfs()
     } catch (err) {

@@ -22,11 +22,11 @@ export function useFFmpeg() {
     const clipData: { name: string; data: ArrayBuffer }[] = []
     try {
       for (const clip of clips) {
-        const file = await ProjectStorage.getFile(projectId, clip.fileName)
+        const file = await ProjectStorage.getFile(projectId, clip.opfsFilename)
         const buffer = await file.arrayBuffer()
-        clipData.push({ name: clip.fileName, data: buffer })
+        clipData.push({ name: clip.opfsFilename, data: buffer })
       }
-    } catch (err) {
+    } catch {
       store.setConcatStatus('error')
       return
     }
@@ -38,8 +38,11 @@ export function useFFmpeg() {
 
     try {
       const result = await concatClips(clipData)
-      await ProjectStorage.saveFile(projectId, '_concat_output.mp4', new Blob([result]))
-    } catch (err) {
+      const copy = new Uint8Array(result.byteLength)
+      copy.set(result)
+      await ProjectStorage.saveFile(projectId, '_concat_output.mp4', new Blob([copy]))
+      store.setConcatStatus('done')
+    } catch {
       store.setConcatStatus('error')
     }
   }, [])

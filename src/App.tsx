@@ -6,8 +6,10 @@ import { MainLayout, Sidebar } from './components/layout'
 import { SlotA, SlotB } from './components/ingestion'
 import { PreviewPlayer } from './components/player'
 import { AriaAnnouncerProvider, useAriaAnnouncer } from './components/accessibility/AriaAnnouncer'
+import { saveSessionSnapshot, restoreSession } from './lib/session/session-recovery'
 
 type WorkspaceTab = 'slota' | 'slotb' | 'preview'
+const workspaceRef = { current: null as HTMLDivElement | null }
 
 function Workspace({ onConcatNeeded }: { onConcatNeeded?: (projectId: string) => void }) {
   const currentProjectId = useProjectStore((s) => s.currentProjectId)
@@ -28,6 +30,16 @@ function Workspace({ onConcatNeeded }: { onConcatNeeded?: (projectId: string) =>
     else if (concatJob.status === 'error') announce('Timeline re-stitch failed', true)
   }, [concatJob.status, announce])
 
+  useEffect(() => {
+    saveSessionSnapshot()
+  }, [currentProjectId])
+
+  useEffect(() => {
+    if (project && workspaceRef.current) {
+      workspaceRef.current.focus()
+    }
+  }, [project])
+
   const handleConcatNeeded = useCallback(() => {
     const id = useProjectStore.getState().currentProjectId
     if (id) onConcatNeeded?.(id)
@@ -39,7 +51,7 @@ function Workspace({ onConcatNeeded }: { onConcatNeeded?: (projectId: string) =>
 
   if (!currentProjectId || !project) {
     return (
-      <div className="flex flex-1 items-center justify-center">
+      <div className="flex flex-1 items-center justify-center" tabIndex={-1}>
         <div className="text-center">
           <h2 className="text-xl font-semibold text-gray-300">Welcome to vedo</h2>
           <p className="mt-2 text-sm text-gray-500">
@@ -57,10 +69,10 @@ function Workspace({ onConcatNeeded }: { onConcatNeeded?: (projectId: string) =>
   ]
 
   return (
-    <div className="flex flex-1 flex-col overflow-hidden">
+    <div className="flex flex-1 flex-col overflow-hidden" ref={workspaceRef} tabIndex={-1}>
       <div className="border-b border-gray-700 bg-gray-900 px-4">
         <div className="flex items-center justify-between">
-          <h2 className="py-3 text-sm font-semibold text-gray-200">
+          <h2 className="py-3 text-sm font-semibold text-gray-200" tabIndex={-1}>
             {project.name}
           </h2>
           <button
@@ -82,7 +94,10 @@ function Workspace({ onConcatNeeded }: { onConcatNeeded?: (projectId: string) =>
               role="tab"
               aria-selected={activeTab === tab.key}
               aria-controls={`panel-${tab.key}`}
-              onClick={() => setActiveTab(tab.key)}
+              onClick={() => {
+                setActiveTab(tab.key)
+                announce(`Switched to ${tab.label} tab`)
+              }}
               className={`border-b-2 px-1 py-2 text-sm transition-colors focus:outline-none focus:ring-2 focus:ring-sky-500 ${
                 activeTab === tab.key
                   ? 'border-sky-500 text-sky-300'
@@ -96,15 +111,15 @@ function Workspace({ onConcatNeeded }: { onConcatNeeded?: (projectId: string) =>
       </div>
 
       <div className="flex-1 overflow-y-auto p-4">
-        <div role="tabpanel" id="panel-slota" hidden={activeTab !== 'slota'}>
+        <div role="tabpanel" id="panel-slota" aria-label="Main videos tab panel" hidden={activeTab !== 'slota'}>
           {activeTab === 'slota' && (
             <SlotA projectId={currentProjectId} onConcatNeeded={handleConcatNeeded} />
           )}
         </div>
-        <div role="tabpanel" id="panel-slotb" hidden={activeTab !== 'slotb'}>
+        <div role="tabpanel" id="panel-slotb" aria-label="Overlays tab panel" hidden={activeTab !== 'slotb'}>
           {activeTab === 'slotb' && <SlotB projectId={currentProjectId} />}
         </div>
-        <div role="tabpanel" id="panel-preview" hidden={activeTab !== 'preview'}>
+        <div role="tabpanel" id="panel-preview" aria-label="Preview tab panel" hidden={activeTab !== 'preview'}>
           {activeTab === 'preview' && (
             <PreviewPlayer
               projectId={currentProjectId}
@@ -119,6 +134,18 @@ function Workspace({ onConcatNeeded }: { onConcatNeeded?: (projectId: string) =>
 
 function App() {
   const { runConcat } = useFFmpeg()
+
+  useEffect(() => {
+    restoreSession()
+  }, [])
+
+  useEffect(() => {
+    const id = useProjectStore.getState().currentProjectId
+    if (id) {
+      const clips = useClipStore.getState().getSlotClips(id, 'A')
+      if (clips.length >= 2) runConcat(id)
+    }
+  }, [runConcat])
 
   const handleProjectChange = useCallback(() => {
     const id = useProjectStore.getState().currentProjectId

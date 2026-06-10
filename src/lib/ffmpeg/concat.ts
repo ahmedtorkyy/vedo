@@ -3,12 +3,6 @@ import { useClipStore } from '../state/clip-store'
 let worker: Worker | null = null
 let isRunning = false
 
-const KNOWN_WORKER_ERRORS = new Set([
-  'SharedArrayBuffer is not defined',
-  'Cannot use SharedArrayBuffer',
-  'wasm streaming compile failed',
-])
-
 type ResolveReject = {
   resolve: (data: Uint8Array) => void
   reject: (err: Error) => void
@@ -63,9 +57,6 @@ function handleWorkerMessage(e: MessageEvent) {
   }
 
   if (type === 'load-error') {
-    const friendly = KNOWN_WORKER_ERRORS.has(e.data.error ?? '')
-      ? 'Cross-origin isolation not enabled.'
-      : e.data.error
     useClipStore.getState().setConcatStatus('error')
     isRunning = false
     return

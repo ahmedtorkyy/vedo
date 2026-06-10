@@ -2,6 +2,7 @@ import { useCallback, useMemo } from 'react'
 import { useClipStore } from '../../lib/state'
 import { useFileUpload } from '../../hooks/useFileUpload'
 import { useAriaAnnouncer } from '../accessibility/AriaAnnouncer'
+import { ProjectStorage } from '../../lib/opfs'
 import { UploadZone } from './UploadZone'
 import { ClipCard } from './ClipCard'
 import { UploadProgress } from './UploadProgress'
@@ -43,9 +44,16 @@ export function SlotB({ projectId, onPlayClip }: SlotBProps) {
     announce(clip?.muted ? 'Overlay unmuted' : 'Overlay muted')
   }, [projectId, clips, toggleMute, announce])
 
-  const handleDelete = useCallback((clipId: string) => {
+  const handleDelete = useCallback(async (clipId: string) => {
     const clip = clips.find((c) => c.id === clipId)
     removeClip(projectId, 'B', clipId)
+    if (clip) {
+      try {
+        await ProjectStorage.deleteFile(projectId, clip.opfsFilename)
+      } catch {
+        // file may not exist
+      }
+    }
     announce(`Deleted overlay ${clip?.fileName ?? 'clip'}`)
   }, [projectId, clips, removeClip, announce])
 

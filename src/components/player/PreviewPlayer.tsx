@@ -17,8 +17,8 @@ export function PreviewPlayer({ projectId, concatReady }: PreviewPlayerProps) {
 
     function onPlay() { setPlaying(true) }
     function onPause() { setPlaying(false) }
-    function onTimeUpdate() { setCurrentTime(video.currentTime) }
-    function onLoadedMetadata() { setDuration(video.duration) }
+    function onTimeUpdate() { if (video) setCurrentTime(video.currentTime) }
+    function onLoadedMetadata() { if (video) setDuration(video.duration) }
     function onEnded() { setPlaying(false) }
 
     video.addEventListener('play', onPlay)
@@ -50,11 +50,6 @@ export function PreviewPlayer({ projectId, concatReady }: PreviewPlayerProps) {
     const m = Math.floor(t / 60)
     const s = Math.floor(t % 60)
     return `${m}:${s.toString().padStart(2, '0')}`
-  }
-
-  function getVideoSrc(): string | undefined {
-    if (!projectId) return undefined
-    return undefined
   }
 
   return (

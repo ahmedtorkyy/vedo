@@ -1,7 +1,9 @@
-import { useProjectStore } from '../../lib/state'
+import { useProjectStore, useClipStore } from '../../lib/state'
 import { ProjectList } from './ProjectList'
 import { NewProjectDialog } from './NewProjectDialog'
 import { useState } from 'react'
+import { ProjectStorage } from '../../lib/opfs'
+import { useAriaAnnouncer } from '../accessibility/AriaAnnouncer'
 
 interface SidebarProps {
   onProjectChange: () => void
@@ -14,20 +16,44 @@ export function Sidebar({ onProjectChange }: SidebarProps) {
   const createProject = useProjectStore((s) => s.createProject)
   const deleteProject = useProjectStore((s) => s.deleteProject)
   const setCurrentProject = useProjectStore((s) => s.setCurrentProject)
+  const { announce } = useAriaAnnouncer()
 
-  function handleCreate(name: string) {
-    createProject(name)
+  async function handleCreate(name: string) {
+    const project = createProject(name)
     setDialogOpen(false)
+    await ProjectStorage.writeMetadata(project.id, {
+      name: project.name,
+      id: project.id,
+      createdAt: project.createdAt,
+      modifiedAt: project.updatedAt,
+      version: 1,
+    })
+    announce(`Created project ${name}`)
     onProjectChange()
   }
 
-  function handleSelect(id: string) {
+  async function handleSelect(id: string) {
     setCurrentProject(id)
     onProjectChange()
   }
 
-  function handleDelete(id: string) {
+  async function handleDelete(id: string) {
+    const project = projects.find((p) => p.id === id)
+    const clips = useClipStore.getState().clips[id]
+    if (clips) {
+      for (const slot of ['A', 'B'] as const) {
+        for (const clip of clips[slot] || []) {
+          try {
+            await ProjectStorage.deleteFile(id, clip.opfsFilename)
+          } catch {
+            // file may not exist
+          }
+        }
+      }
+    }
     deleteProject(id)
+    await ProjectStorage.deleteProjectFolder(id)
+    announce(`Deleted project ${project?.name ?? id}`)
     onProjectChange()
   }
 

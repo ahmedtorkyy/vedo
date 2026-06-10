@@ -12,6 +12,7 @@ export function NewProjectDialog({ open, onClose, onCreate }: NewProjectDialogPr
 
   useEffect(() => {
     if (open) {
+      // eslint-disable-next-line react-hooks/set-state-in-effect
       setName('')
       requestAnimationFrame(() => inputRef.current?.focus())
     }

@@ -8,6 +8,7 @@ const AriaAnnouncerContext = createContext<AriaAnnouncerContextValue>({
   announce: () => {},
 })
 
+// eslint-disable-next-line react-refresh/only-export-components
 export function useAriaAnnouncer() {
   return useContext(AriaAnnouncerContext)
 }
