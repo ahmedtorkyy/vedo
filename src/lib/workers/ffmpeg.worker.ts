@@ -229,6 +229,96 @@ self.onmessage = async (e: MessageEvent) => {
     }
   }
 
+  if (type === 'render-clip') {
+    try {
+      const instance = await getFFmpeg()
+      const { projectId, inputName, outputName, filterComplex } = payload as {
+        projectId: string; inputName: string; outputName: string; filterComplex: string
+      }
+
+      const raw = await readOpfsFile(projectId, inputName)
+      await instance.writeFile(inputName, raw)
+
+      await instance.exec([
+        '-i', inputName,
+        '-filter_complex', filterComplex,
+        '-map', '[v]',
+        '-map', '[a]',
+        '-c:v', 'libx264',
+        '-preset', 'fast',
+        '-crf', '23',
+        '-c:a', 'aac',
+        '-b:a', '128k',
+        '-f', 'mp4',
+        outputName,
+      ])
+
+      const result = await instance.readFile(outputName) as Uint8Array
+      const copy = new Uint8Array(result.byteLength)
+      copy.set(result)
+      await writeOpfsFile(projectId, outputName, copy)
+
+      await instance.deleteFile(inputName)
+      await instance.deleteFile(outputName)
+      purgeMemfs()
+
+      self.postMessage({ type: 'render-clip-done', outputFilename: outputName })
+    } catch (err) {
+      purgeMemfs()
+      self.postMessage({ type: 'render-clip-error', error: String(err) })
+    }
+  }
+
+  if (type === 'render-concat') {
+    try {
+      const instance = await getFFmpeg()
+      const { projectId, clips, outputName } = payload as {
+        projectId: string
+        clips: { name: string; duration: number }[]
+        outputName: string
+      }
+
+      let totalBytes = 0
+      for (const clip of clips) {
+        const root = await navigator.storage.getDirectory()
+        const folder = await root.getDirectoryHandle(`project_${projectId}`)
+        const handle = await folder.getFileHandle(clip.name)
+        const file = await handle.getFile()
+        totalBytes += file.size
+      }
+
+      if (totalBytes > MEMFS_LIMIT_BYTES) {
+        self.postMessage({ type: 'render-concat-error', error: `Total file size exceeds MEMFS limit.` })
+        return
+      }
+
+      for (const clip of clips) {
+        const raw = await readOpfsFile(projectId, clip.name)
+        await instance.writeFile(clip.name, raw)
+      }
+
+      const concatInput = clips.map((c) => `file '${c.name}'`).join('\n')
+      await instance.writeFile('concat.txt', new TextEncoder().encode(concatInput))
+      await instance.exec(['-f', 'concat', '-safe', '0', '-i', 'concat.txt', '-c', 'copy', outputName])
+
+      const result = await instance.readFile(outputName) as Uint8Array
+      const copy = new Uint8Array(result.byteLength)
+      copy.set(result)
+      await writeOpfsFile(projectId, outputName.replace(/^_/, ''), copy)
+
+      for (const clip of clips) {
+        await instance.deleteFile(clip.name).catch(() => {})
+      }
+      await instance.deleteFile('concat.txt').catch(() => {})
+      purgeMemfs()
+
+      self.postMessage({ type: 'render-concat-done', outputFilename: outputName.replace(/^_/, '') })
+    } catch (err) {
+      purgeMemfs()
+      self.postMessage({ type: 'render-concat-error', error: String(err) })
+    }
+  }
+
   if (type === 'smart-cut') {
     try {
       const instance = await getFFmpeg()

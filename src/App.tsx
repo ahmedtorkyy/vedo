@@ -8,11 +8,12 @@ import { PreviewPlayer } from './components/player'
 import { TranscriptionPanel } from './components/transcription'
 import { EditingPanel } from './components/editing'
 import { DirectorPanel } from './components/director'
+import { ExportPanel } from './components/export/ExportPanel'
 import { AriaAnnouncerProvider, useAriaAnnouncer } from './components/accessibility/AriaAnnouncer'
 import { AudioOrchestrator } from './lib/audio'
 import { saveSessionSnapshot, restoreSession } from './lib/session/session-recovery'
 
-type WorkspaceTab = 'slota' | 'slotb' | 'preview' | 'transcription' | 'editing' | 'director'
+type WorkspaceTab = 'slota' | 'slotb' | 'preview' | 'transcription' | 'editing' | 'director' | 'export'
 const workspaceRef = { current: null as HTMLDivElement | null }
 
 function Workspace({ onConcatNeeded }: { onConcatNeeded?: (projectId: string) => void }) {
@@ -73,6 +74,7 @@ function Workspace({ onConcatNeeded }: { onConcatNeeded?: (projectId: string) =>
     { key: 'transcription', label: 'Transcription' },
     { key: 'editing', label: 'Editing' },
     { key: 'director', label: 'Director' },
+    { key: 'export', label: 'Export' },
   ]
 
   return (
@@ -147,6 +149,11 @@ function Workspace({ onConcatNeeded }: { onConcatNeeded?: (projectId: string) =>
         <div role="tabpanel" id="panel-director" aria-label="Director tab panel" hidden={activeTab !== 'director'}>
           {activeTab === 'director' && (
             <DirectorPanel projectId={currentProjectId} />
+          )}
+        </div>
+        <div role="tabpanel" id="panel-export" aria-label="Export tab panel" hidden={activeTab !== 'export'}>
+          {activeTab === 'export' && (
+            <ExportPanel projectId={currentProjectId} />
           )}
         </div>
       </div>
