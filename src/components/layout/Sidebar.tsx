@@ -39,24 +39,18 @@ export function Sidebar({ onProjectChange }: SidebarProps) {
 
   async function handleDelete(id: string) {
     const project = projects.find((p) => p.id === id)
-    const clips = useClipStore.getState().clips[id]
-    if (clips) {
-      for (const slot of ['A', 'B'] as const) {
-        for (const clip of clips[slot] || []) {
-          try {
-            await ProjectStorage.deleteFile(id, clip.opfsFilename)
-          } catch {
-            // file may not exist
-          }
-        }
-      }
-    }
+
     await ProjectStorage.deleteProjectFolder(id)
-    deleteProject(id)
+
     useClipStore.getState().removeProjectData(id)
     useClipStore.getState().setConcatStatus('idle')
+
     useHistoryStore.getState().clear()
+
     try { sessionStorage.removeItem('vedo-session') } catch { /* sessionStorage may be unavailable */ }
+
+    deleteProject(id)
+
     announce(`Deleted project ${project?.name ?? id}`)
     onProjectChange()
   }
