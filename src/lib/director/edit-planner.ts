@@ -47,7 +47,7 @@ export function globalToLocal(
 export function splitRegionAcrossClips(
   globalStart: number,
   globalEnd: number,
-  clips: { id: string; fileName: string; duration: number; slot: 'A' | 'B' }[],
+  _clips: { id: string; fileName: string; duration: number; slot: 'A' | 'B' }[],
   clipOffsets: { clipId: string; offsetStart: number; offsetEnd: number }[] | undefined,
 ): { clipId: string; localStart: number; localEnd: number }[] {
   if (!clipOffsets || clipOffsets.length === 0) {

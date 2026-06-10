@@ -1,6 +1,5 @@
 import { useClipStore } from '../state/clip-store'
 import type { Clip, AudioCleansingOptions } from '../../types'
-import type { SilenceSegment } from '../../types'
 
 let worker: Worker | null = null
 let isRunning = false

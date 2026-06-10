@@ -45,6 +45,7 @@ export interface EditDecision {
   endTime: number
   parameters: Record<string, unknown>
   justification: string
+  overlayClipId?: string
 }
 
 export interface EditPlan {

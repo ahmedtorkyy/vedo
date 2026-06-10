@@ -1,9 +1,8 @@
 import { useCallback, useRef, useState } from 'react'
 import { useClipStore } from '../lib/state'
 import { extractAudio, cleanAudio } from '../lib/ffmpeg'
-import { loadTranscriptionModel, transcribeFromOpfs, transcribeAudio, decodeWavToF32 } from '../lib/transcription'
+import { loadTranscriptionModel, transcribeFromOpfs } from '../lib/transcription'
 import { useTranscriptionStore } from '../lib/transcription'
-import { ProjectStorage } from '../lib/opfs'
 import { recommendModel } from '../lib/editing/device-capability'
 import type { AudioCleansingOptions } from '../types'
 

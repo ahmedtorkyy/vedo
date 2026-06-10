@@ -336,6 +336,7 @@ describe('createEditPlan overlay cross-clip integration', () => {
     }
 
     const retention: RetentionAnalysis = {
+      hook: null,
       lowEnergyRegions: [],
       highValueMoments: [],
       repetitiveRegions: [],

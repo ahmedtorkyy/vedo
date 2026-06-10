@@ -43,7 +43,7 @@ export function generateTrimFilters(
   if (kept.length === 0) return null
 
   const selectExpr = kept
-    .map((k, i) => `between(t,${k.start.toFixed(3)},${k.end.toFixed(3)})`)
+    .map((k, _i) => `between(t,${k.start.toFixed(3)},${k.end.toFixed(3)})`)
     .join('+')
 
   const audioFilter = `aselect='${selectExpr}',asetpts=N/SR/TB`

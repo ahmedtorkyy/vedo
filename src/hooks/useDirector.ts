@@ -1,5 +1,5 @@
 import { useCallback } from 'react'
-import { useClipStore, useProjectStore } from '../lib/state'
+import { useClipStore } from '../lib/state'
 import { useTranscriptionStore } from '../lib/transcription'
 import { useEditingStore } from '../lib/editing'
 import { useDirectorStore, analyzeContent, detectHooks, analyzeRetention, createEditPlan } from '../lib/director'

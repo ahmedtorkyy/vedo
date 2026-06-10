@@ -1,6 +1,6 @@
 import { useCallback, useRef } from 'react'
 import { useClipStore } from '../lib/state'
-import { useEditingStore, detectSilence, detectFillerWords, detectRepeatedPhrases, detectLowEnergySections, filterSilenceSegments, getEffectiveOptions } from '../lib/editing'
+import { useEditingStore, detectSilence, detectFillerWords, detectRepeatedPhrases, detectLowEnergySections, filterSilenceSegments } from '../lib/editing'
 import { useTranscriptionStore } from '../lib/transcription'
 import { extractAudio, smartCutVideo } from '../lib/ffmpeg'
 import { ProjectStorage } from '../lib/opfs'

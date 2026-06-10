@@ -6,13 +6,13 @@ import { useAriaAnnouncer } from '../accessibility/AriaAnnouncer'
 import { useTranscriptionStore } from '../../lib/transcription'
 import { SilenceTimeline } from './SilenceTimeline'
 import { SmartCutPanel } from './SmartCutPanel'
-import type { SmartCutOptions, SilenceSegment } from '../../types'
+import type { SmartCutOptions } from '../../types'
 
 interface EditingPanelProps {
   projectId: string
 }
 
-function defaultOptions(clipId: string): SmartCutOptions {
+function defaultOptions(_clipId: string): SmartCutOptions {
   return { enabled: true, aggressiveness: 'medium' }
 }
 
@@ -196,7 +196,7 @@ export function EditingPanel({ projectId }: EditingPanelProps) {
           />
 
           <SmartCutPanel
-            clipId={selectedClipId}
+            clipId={selectedClipId ?? ''}
             options={selectedOptions}
             silenceCount={silenceSegments.length}
             onOptionsChange={handleOptionsChange}

@@ -13,7 +13,7 @@ interface DirectorStore {
   clearAll: () => void
 }
 
-function emptyState(projectId: string): DirectorState {
+function emptyState(_projectId: string): DirectorState {
   return {
     status: 'idle',
     instructions: '',

@@ -97,7 +97,6 @@ export function analyzeContent(
   clipFileName?: string,
 ): ContentAnalysis {
   const fullText = segments.map((s) => s.text.trim()).join(' ').toLowerCase()
-  const allText = segments.map((s) => s.text)
 
   const topic = inferTopic(fullText, clipFileName)
   const category = inferCategory(fullText)
@@ -230,7 +229,7 @@ function extractKeywords(text: string, count: number): string[] {
 function analyzeStructure(
   segments: { start: number; end: number; text: string }[],
   duration: number,
-  fullText: string,
+  _fullText: string,
 ): ContentAnalysis['structure'] {
   const result: ContentAnalysis['structure'] = {
     hook: null,
@@ -545,8 +544,8 @@ function extractObjects(
 
   const uniqueObjects = Object.entries(freq)
     .sort((a, b) => b[1] - a[1])
-    .map(([_, __], i, arr) => {
-      const original = [...new Set(objects)][i]
+    .map((_entry, idx) => {
+      const original = [...new Set(objects)][idx]
       return original
     })
     .filter(Boolean)

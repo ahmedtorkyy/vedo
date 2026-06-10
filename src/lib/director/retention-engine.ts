@@ -1,4 +1,4 @@
-import type { ContentAnalysis, HookInfo, EditDecision, StyleProfile } from './types'
+import type { ContentAnalysis, HookInfo, StyleProfile } from './types'
 
 export interface RetentionAnalysis {
   hook: HookInfo | null
@@ -13,7 +13,7 @@ export function analyzeRetention(
   analysis: ContentAnalysis,
   hooks: HookInfo[],
   silenceSegments: { start: number; end: number; duration: number; confidence: number }[],
-  duration: number,
+  _duration: number,
 ): RetentionAnalysis {
   const lowEnergyRegions = silenceSegments
     .filter((s) => s.duration >= 1.0 && s.confidence > 0.3)
@@ -93,7 +93,7 @@ export function analyzeRetention(
 
 export function generateRetentionEdits(
   retention: RetentionAnalysis,
-  style: StyleProfile,
+  _style: StyleProfile,
 ): { type: 'trim'; clipId: string; slot: 'A' | 'B'; startTime: number; endTime: number; justification: string }[] {
   const edits: {
     type: 'trim'
