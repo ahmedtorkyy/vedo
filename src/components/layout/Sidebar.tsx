@@ -1,9 +1,7 @@
-import { useProjectStore, useClipStore, useHistoryStore } from '../../lib/state'
-import { useTranscriptionStore } from '../../lib/transcription'
+import { useProjectStore } from '../../lib/state'
 import { ProjectList } from './ProjectList'
 import { NewProjectDialog } from './NewProjectDialog'
 import { useState } from 'react'
-import { ProjectStorage } from '../../lib/opfs'
 import { useAriaAnnouncer } from '../accessibility/AriaAnnouncer'
 
 interface SidebarProps {
@@ -20,15 +18,8 @@ export function Sidebar({ onProjectChange }: SidebarProps) {
   const { announce } = useAriaAnnouncer()
 
   async function handleCreate(name: string) {
-    const project = createProject(name)
+    createProject(name)
     setDialogOpen(false)
-    await ProjectStorage.writeMetadata(project.id, {
-      name: project.name,
-      id: project.id,
-      createdAt: project.createdAt,
-      modifiedAt: project.updatedAt,
-      version: 1,
-    })
     announce(`Created project ${name}`)
     onProjectChange()
   }
@@ -40,20 +31,7 @@ export function Sidebar({ onProjectChange }: SidebarProps) {
 
   async function handleDelete(id: string) {
     const project = projects.find((p) => p.id === id)
-
-    await ProjectStorage.deleteProjectFolder(id)
-
-    useClipStore.getState().removeProjectData(id)
-    useClipStore.getState().setConcatStatus('idle')
-
-    useTranscriptionStore.getState().clearAll()
-
-    useHistoryStore.getState().clear()
-
-    try { sessionStorage.removeItem('vedo-session') } catch { /* sessionStorage may be unavailable */ }
-
-    deleteProject(id)
-
+    await deleteProject(id)
     announce(`Deleted project ${project?.name ?? id}`)
     onProjectChange()
   }
