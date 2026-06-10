@@ -7,6 +7,7 @@ import { useClipStore } from './clip-store'
 import { useHistoryStore } from './history-store'
 import { useTranscriptionStore } from '../transcription/transcription-store'
 import { useEditingStore } from '../editing/editing-store'
+import { useDirectorStore } from '../director/director-store'
 
 interface ProjectStore {
   projects: Project[]
@@ -53,6 +54,8 @@ export const useProjectStore = create<ProjectStore>()(
         useTranscriptionStore.getState().removeProjectData(id)
 
         useEditingStore.getState().removeProjectData(id)
+
+        useDirectorStore.getState().clearProject(id)
 
         useHistoryStore.getState().removeProjectHistory(id)
 

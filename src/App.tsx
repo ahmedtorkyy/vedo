@@ -7,11 +7,12 @@ import { SlotA, SlotB } from './components/ingestion'
 import { PreviewPlayer } from './components/player'
 import { TranscriptionPanel } from './components/transcription'
 import { EditingPanel } from './components/editing'
+import { DirectorPanel } from './components/director'
 import { AriaAnnouncerProvider, useAriaAnnouncer } from './components/accessibility/AriaAnnouncer'
 import { AudioOrchestrator } from './lib/audio'
 import { saveSessionSnapshot, restoreSession } from './lib/session/session-recovery'
 
-type WorkspaceTab = 'slota' | 'slotb' | 'preview' | 'transcription' | 'editing'
+type WorkspaceTab = 'slota' | 'slotb' | 'preview' | 'transcription' | 'editing' | 'director'
 const workspaceRef = { current: null as HTMLDivElement | null }
 
 function Workspace({ onConcatNeeded }: { onConcatNeeded?: (projectId: string) => void }) {
@@ -71,6 +72,7 @@ function Workspace({ onConcatNeeded }: { onConcatNeeded?: (projectId: string) =>
     { key: 'preview', label: 'Preview' },
     { key: 'transcription', label: 'Transcription' },
     { key: 'editing', label: 'Editing' },
+    { key: 'director', label: 'Director' },
   ]
 
   return (
@@ -140,6 +142,11 @@ function Workspace({ onConcatNeeded }: { onConcatNeeded?: (projectId: string) =>
         <div role="tabpanel" id="panel-editing" aria-label="Editing tab panel" hidden={activeTab !== 'editing'}>
           {activeTab === 'editing' && (
             <EditingPanel projectId={currentProjectId} />
+          )}
+        </div>
+        <div role="tabpanel" id="panel-director" aria-label="Director tab panel" hidden={activeTab !== 'director'}>
+          {activeTab === 'director' && (
+            <DirectorPanel projectId={currentProjectId} />
           )}
         </div>
       </div>
