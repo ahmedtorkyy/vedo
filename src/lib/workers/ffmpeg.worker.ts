@@ -81,7 +81,7 @@ self.onmessage = async (e: MessageEvent) => {
   if (type === 'concat') {
     try {
       const instance = await getFFmpeg()
-      const { projectId, clips } = payload as { projectId: string; clips: { name: string }[] }
+      const { projectId, clips } = payload as { projectId: string; clips: { name: string; muted?: boolean }[] }
 
       let totalBytes = 0
       for (const clip of clips) {
@@ -106,12 +106,24 @@ self.onmessage = async (e: MessageEvent) => {
         })
       }
 
+      // Re-encode each clip to normalize codecs and apply mute
+      const normalizedNames: string[] = []
       for (const clip of clips) {
+        if (!clip.name) continue
         const raw = await readOpfsFile(projectId, clip.name)
         await instance.writeFile(clip.name, raw)
+
+        const normName = `_norm_${clip.name}`
+        const args = ['-i', clip.name, '-c:v', 'libx264', '-preset', 'fast', '-crf', '23', '-c:a', 'aac', '-b:a', '128k']
+        if (clip.muted) args.push('-af', 'volume=0')
+        args.push(normName)
+        await instance.exec(args)
+
+        await instance.deleteFile(clip.name).catch(() => {})
+        normalizedNames.push(normName)
       }
 
-      const concatContent = clips.map((c) => `file '${c.name}'`).join('\n')
+      const concatContent = normalizedNames.map((c) => `file '${c}'`).join('\n')
       const concatName = 'concat.txt'
       await instance.writeFile(concatName, new TextEncoder().encode(concatContent))
 
@@ -122,12 +134,11 @@ self.onmessage = async (e: MessageEvent) => {
       const outFilename = `_concat_output_${Date.now()}.mp4`
       await writeOpfsFile(projectId, outFilename, raw)
 
+      for (const n of normalizedNames) {
+        await instance.deleteFile(n).catch(() => {})
+      }
       await instance.deleteFile(concatName)
       await instance.deleteFile('output.mp4')
-      for (const clip of clips) {
-        await instance.deleteFile(clip.name)
-      }
-
       purgeMemfs()
 
       self.postMessage({ type: 'concat-done', outputFilename: outFilename })

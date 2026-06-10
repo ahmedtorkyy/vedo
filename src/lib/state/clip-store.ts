@@ -16,6 +16,9 @@ interface ClipState {
   setUploadProgress: (clipId: string, progress: number, status: UploadProgressEntry['status'], error?: string) => void;
   removeUploadProgress: (clipId: string) => void;
   setConcatStatus: (status: ClipState['concatJob']['status'], outputFilename?: string) => void;
+  pendingSeek: number | null;
+  setPendingSeek: (time: number) => void;
+  clearPendingSeek: () => void;
   removeProjectData: (projectId: string) => void;
 }
 
@@ -25,6 +28,7 @@ export const useClipStore = create<ClipState>()(
       clips: {},
       uploads: {},
       concatJob: { status: 'idle' },
+      pendingSeek: null,
 
       getSlotClips: (projectId, slot) => {
         const projectClips = get().clips[projectId];
@@ -98,6 +102,8 @@ export const useClipStore = create<ClipState>()(
       }),
 
       setConcatStatus: (status, outputFilename) => set({ concatJob: { status, outputFilename } }),
+      setPendingSeek: (time) => set({ pendingSeek: time }),
+      clearPendingSeek: () => set({ pendingSeek: null }),
 
       removeProjectData: (projectId) => set((state) => {
         const nextClips = { ...state.clips }

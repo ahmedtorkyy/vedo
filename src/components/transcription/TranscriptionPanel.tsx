@@ -39,9 +39,15 @@ export function TranscriptionPanel({ projectId }: TranscriptionPanelProps) {
   }, [projectId, selectedClipId, cleanseClipAudio])
 
   const handleSegmentClick = useCallback((start: number) => {
-    const video = document.querySelector<HTMLVideoElement>('video[aria-label="Video preview"]')
-    if (video) video.currentTime = start
-  }, [])
+    if (!selectedClipId) return
+    const clipsA = useClipStore.getState().getSlotClips(projectId, 'A')
+    const clipIndex = clipsA.findIndex((c) => c.id === selectedClipId)
+    let offset = 0
+    for (let i = 0; i < clipIndex; i++) {
+      offset += clipsA[i].duration
+    }
+    useClipStore.getState().setPendingSeek(offset + start)
+  }, [projectId, selectedClipId])
 
   const canTranscribe = selectedClipId && (!result || result.status === 'idle' || result.status === 'error')
   const isBusy = result?.status === 'extracting' || result?.status === 'transcribing' || cleansing || loadingModel

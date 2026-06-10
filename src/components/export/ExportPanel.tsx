@@ -1,4 +1,4 @@
-import { useCallback } from 'react'
+import { useCallback, useEffect, useRef } from 'react'
 import { useClipStore } from '../../lib/state'
 import { useDirectorStore } from '../../lib/director/director-store'
 import { useRender } from '../../hooks/useRender'
@@ -11,10 +11,21 @@ interface ExportPanelProps {
 export function ExportPanel({ projectId }: ExportPanelProps) {
   const { renderState, isBusy, startExport, download, reset } = useRender(projectId)
   const { announce } = useAriaAnnouncer()
+  const prevDoneRef = useRef(false)
 
   const clipsA = useClipStore((s) => s.clips[projectId]?.A ?? [])
   const hasPlan = !!useDirectorStore((s) => s.state[projectId]?.plan)
   const canExport = clipsA.length > 0 && hasPlan && !isBusy
+
+  useEffect(() => {
+    if (renderState.status === 'done' && !prevDoneRef.current) {
+      prevDoneRef.current = true
+      announce('Video export complete')
+    }
+    if (renderState.status !== 'done') {
+      prevDoneRef.current = false
+    }
+  }, [renderState.status, announce])
 
   const handleExport = useCallback(() => {
     startExport()

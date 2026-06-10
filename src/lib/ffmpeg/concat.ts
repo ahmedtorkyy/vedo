@@ -125,7 +125,7 @@ export async function loadFFmpeg(): Promise<void> {
 
 export async function concatClips(
   projectId: string,
-  clips: Pick<Clip, 'opfsFilename'>[],
+  clips: Pick<Clip, 'opfsFilename' | 'muted'>[],
 ): Promise<string> {
   if (isRunning) {
     throw new Error('A concat operation is already in progress')
@@ -140,7 +140,7 @@ export async function concatClips(
       type: 'concat',
       payload: {
         projectId,
-        clips: clips.map((c) => ({ name: c.opfsFilename })),
+        clips: clips.map((c) => ({ name: c.opfsFilename, muted: c.muted })),
       },
     })
   })

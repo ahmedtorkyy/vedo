@@ -123,49 +123,75 @@ function buildFilterComplex(
     mainVideoFilters.push(...buildZoomFilters(zoomDecisions))
   }
 
-  mainVideoFilters.push('fps=30')
+  mainVideoFilters.push('fps=30', 'scale=trunc(iw/2)*2:trunc(ih/2)*2')
 
   if (hasOverlay) {
     let fc = `[0:v]${mainVideoFilters.join(',')}[vbase];`
 
-    const uniqueOverlays: { clipIdx: number; od: EditDecision }[] = []
+    // Group by clipIdx and count usages to add split when reused
+    const overlayGroups: Map<number, { clipIdx: number; ods: EditDecision[] }> = new Map()
     let clipIdx = 1
     const seen = new Map<string, number>()
     for (const od of overlayDecisions) {
       const cid = od.overlayClipId ?? ''
       if (!seen.has(cid)) seen.set(cid, clipIdx++)
-      uniqueOverlays.push({ clipIdx: seen.get(cid)!, od })
+      const ci = seen.get(cid)!
+      if (!overlayGroups.has(ci)) overlayGroups.set(ci, { clipIdx: ci, ods: [] })
+      overlayGroups.get(ci)!.ods.push(od)
     }
 
     let labelIdx = 0
-    const overlayLabels: string[] = []
+    const overlayOps: { od: EditDecision; label: string }[] = []
 
-    for (const { clipIdx: ci, od } of uniqueOverlays) {
-      const scaleFactor = (od.parameters.scale as number) ?? 0.3
-      const opacity = (od.parameters.opacity as number) ?? 1
-      const lbl = `o${labelIdx++}`
-      overlayLabels.push(lbl)
+    for (const [, group] of overlayGroups) {
+      const { clipIdx: ci, ods } = group
+      const useSplit = ods.length > 1
 
-      const overlayFilters: string[] = [
-        `scale=w=iw*${scaleFactor}:h=ih*${scaleFactor}`,
-      ]
-      if (opacity < 1) {
-        overlayFilters.push(`format=rgba,colorchannelmixer=aa=${opacity}`)
+      if (useSplit) {
+        fc += `[${ci}:v]split=${ods.length}${ods.map((_, si) => `[s${labelIdx + si}]`).join('')};`
+        for (let si = 0; si < ods.length; si++) {
+          const od = ods[si]
+          const scaleFactor = (od.parameters.scale as number) ?? 0.3
+          const opacity = (od.parameters.opacity as number) ?? 1
+          const lbl = `o${labelIdx}`
+          overlayOps.push({ od, label: lbl })
+
+          const ofilters: string[] = [
+            `scale=w=iw*${scaleFactor}:h=ih*${scaleFactor}`,
+          ]
+          if (opacity < 1) {
+            ofilters.push(`format=rgba,colorchannelmixer=aa=${opacity}`)
+          }
+          fc += `[s${labelIdx++}]${ofilters.join(',')}[${lbl}];`
+        }
+      } else {
+        const od = ods[0]
+        const scaleFactor = (od.parameters.scale as number) ?? 0.3
+        const opacity = (od.parameters.opacity as number) ?? 1
+        const lbl = `o${labelIdx++}`
+        overlayOps.push({ od, label: lbl })
+
+        const ofilters: string[] = [
+          `scale=w=iw*${scaleFactor}:h=ih*${scaleFactor}`,
+        ]
+        if (opacity < 1) {
+          ofilters.push(`format=rgba,colorchannelmixer=aa=${opacity}`)
+        }
+
+        fc += `[${ci}:v]${ofilters.join(',')}[${lbl}];`
       }
-
-      fc += `[${ci}:v]${overlayFilters.join(',')}[${lbl}];`
     }
 
     // Chain overlays: [vbase][o1]overlay...[vtmp1];[vtmp1][o2]overlay...
     let prevLabel = 'vbase'
-    for (let i = 0; i < overlayLabels.length; i++) {
-      const nextLabel = i < overlayLabels.length - 1 ? `vtmp${i}` : 'v'
-      const od = uniqueOverlays[i].od
+    for (let i = 0; i < overlayOps.length; i++) {
+      const nextLabel = i < overlayOps.length - 1 ? `vtmp${i}` : 'v'
+      const od = overlayOps[i].od
       const x = overlayPosition(od.parameters.placement as string ?? 'center',
         od.parameters.scale as number ?? 0.3)
       const y = overlayPositionY(od.parameters.placement as string ?? 'center',
         od.parameters.scale as number ?? 0.3)
-      fc += `[${prevLabel}][${overlayLabels[i]}]overlay=x=${x}:y=${y}:enable='between(t,${od.startTime},${od.endTime})'[${nextLabel}];`
+      fc += `[${prevLabel}][${overlayOps[i].label}]overlay=x=${x}:y=${y}:enable='between(t,${od.startTime},${od.endTime})'[${nextLabel}];`
       prevLabel = nextLabel
     }
 

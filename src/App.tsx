@@ -24,6 +24,7 @@ function Workspace({ onConcatNeeded }: { onConcatNeeded?: (projectId: string) =>
   const { announce } = useAriaAnnouncer()
   const [activeTab, setActiveTab] = useState<WorkspaceTab>('slota')
   const prevConcatRef = useRef(concatJob.status)
+  const tabRefs = useRef<Record<string, HTMLButtonElement | null>>({})
 
   useEffect(() => {
     const prev = prevConcatRef.current
@@ -109,6 +110,7 @@ function Workspace({ onConcatNeeded }: { onConcatNeeded?: (projectId: string) =>
             }
             if (next) {
               setActiveTab(next)
+              tabRefs.current[next]?.focus()
               announce(`Switched to ${tabs.find((t) => t.key === next)!.label} tab`)
             }
           }}
@@ -116,6 +118,7 @@ function Workspace({ onConcatNeeded }: { onConcatNeeded?: (projectId: string) =>
           {tabs.map((tab) => (
             <button
               key={tab.key}
+              ref={(el) => { tabRefs.current[tab.key] = el }}
               role="tab"
               aria-selected={activeTab === tab.key}
               tabIndex={activeTab === tab.key ? 0 : -1}

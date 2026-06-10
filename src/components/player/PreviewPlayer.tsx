@@ -11,18 +11,17 @@ export function PreviewPlayer({ projectId, concatReady }: PreviewPlayerProps) {
   const [playing, setPlaying] = useState(false)
   const [currentTime, setCurrentTime] = useState(0)
   const [duration, setDuration] = useState(0)
+  const [muted, setMutedState] = useState(false)
   const blobUrlRef = useRef<string | null>(null)
   const concatJob = useClipStore((s) => s.concatJob)
+  const pendingSeek = useClipStore((s) => s.pendingSeek)
 
-  const loadConcatOutput = useCallback(async () => {
+  const loadSource = useCallback(async (filename: string) => {
     if (!projectId) return
-    const outFilename = concatJob.outputFilename
-    if (!outFilename) return
-
     try {
       const root = await navigator.storage.getDirectory()
       const folder = await root.getDirectoryHandle(`project_${projectId}`)
-      const handle = await folder.getFileHandle(outFilename)
+      const handle = await folder.getFileHandle(filename)
       const file = await handle.getFile()
       const url = URL.createObjectURL(file)
 
@@ -32,13 +31,34 @@ export function PreviewPlayer({ projectId, concatReady }: PreviewPlayerProps) {
       const video = videoRef.current
       if (video) video.src = url
     } catch {
-      // concat output not available yet
+      // file not available yet
     }
-  }, [projectId, concatJob.outputFilename])
+  }, [projectId])
+
+  const loadPreview = useCallback(async () => {
+    if (!projectId) return
+
+    const clipsA = useClipStore.getState().getSlotClips(projectId, 'A')
+    if (clipsA.length === 1) {
+      await loadSource(clipsA[0].opfsFilename)
+      return
+    }
+
+    if (concatJob.outputFilename) {
+      await loadSource(concatJob.outputFilename)
+    }
+  }, [projectId, concatJob.outputFilename, loadSource])
 
   useEffect(() => {
-    loadConcatOutput()
-  }, [loadConcatOutput])
+    loadPreview()
+  }, [loadPreview])
+
+  useEffect(() => {
+    if (pendingSeek !== null && videoRef.current) {
+      videoRef.current.currentTime = pendingSeek
+      useClipStore.getState().clearPendingSeek()
+    }
+  }, [pendingSeek])
 
   useEffect(() => {
     const video = videoRef.current
@@ -100,6 +120,13 @@ export function PreviewPlayer({ projectId, concatReady }: PreviewPlayerProps) {
     if (!isNaN(val)) video.currentTime = Math.max(0, Math.min(val, video.duration || 0))
   }, [])
 
+  const handleMuteToggle = useCallback(() => {
+    const video = videoRef.current
+    if (!video) return
+    video.muted = !video.muted
+    setMutedState(video.muted)
+  }, [])
+
   const formatTime = (t: number) => {
     if (!isFinite(t)) return '0:00'
     const m = Math.floor(t / 60)
@@ -152,6 +179,14 @@ export function PreviewPlayer({ projectId, concatReady }: PreviewPlayerProps) {
             className="rounded-md bg-gray-700 px-2 py-1.5 text-sm text-gray-200 hover:bg-gray-600 focus:outline-none focus:ring-2 focus:ring-sky-500"
           >
             +10s
+          </button>
+          <button
+            type="button"
+            onClick={handleMuteToggle}
+            aria-label={muted ? 'Unmute preview' : 'Mute preview'}
+            className="rounded-md bg-gray-700 px-2 py-1.5 text-sm text-gray-200 hover:bg-gray-600 focus:outline-none focus:ring-2 focus:ring-sky-500"
+          >
+            {muted ? 'Unmute' : 'Mute'}
           </button>
           <div className="flex items-center gap-1 text-xs text-gray-400">
             <label htmlFor="preview-seek" className="sr-only">Seek to time in seconds</label>
