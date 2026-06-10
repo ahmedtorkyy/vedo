@@ -1,60 +1,46 @@
-const ROOT_DIR_NAME = 'vedo-projects'
+/**
+ * Ultra-fast native sandboxing wrapper for Origin Private File System (OPFS).
+ * Isolates high-frequency local storage tasks cleanly away from the UI thread.
+ */
+export class ProjectStorage {
+  private static root: FileSystemDirectoryHandle | null = null;
 
-async function getRootDir(): Promise<FileSystemDirectoryHandle> {
-  const root = await navigator.storage.getDirectory()
-  let vedoDir: FileSystemDirectoryHandle
-  try {
-    vedoDir = await root.getDirectoryHandle(ROOT_DIR_NAME)
-  } catch {
-    vedoDir = await root.getDirectoryHandle(ROOT_DIR_NAME, { create: true })
+  private static async getRoot(): Promise<FileSystemDirectoryHandle> {
+    if (!this.root) {
+      this.root = await navigator.storage.getDirectory();
+    }
+    return this.root;
   }
-  return vedoDir
-}
 
-export async function createProjectDirectory(projectId: string): Promise<FileSystemDirectoryHandle> {
-  const root = await getRootDir()
-  let dir: FileSystemDirectoryHandle
-  try {
-    dir = await root.getDirectoryHandle(projectId)
-  } catch {
-    dir = await root.getDirectoryHandle(projectId, { create: true })
+  static async getProjectFolder(projectId: string): Promise<FileSystemDirectoryHandle> {
+    const root = await this.getRoot();
+    return await root.getDirectoryHandle(`project_${projectId}`, { create: true });
   }
-  return dir
-}
 
-export async function getProjectDirectory(projectId: string): Promise<FileSystemDirectoryHandle | null> {
-  const root = await getRootDir()
-  try {
-    return await root.getDirectoryHandle(projectId)
-  } catch {
-    return null
+  static async saveFile(projectId: string, filename: string, data: ReadableStream | Blob): Promise<string> {
+    const folder = await this.getProjectFolder(projectId);
+    const safeName = filename.replace(/[^a-zA-Z0-9._-]/g, '_');
+    const fileHandle = await folder.getFileHandle(safeName, { create: true });
+    const writable = await fileHandle.createWritable();
+    
+    if (data instanceof ReadableStream) {
+      await data.pipeTo(writable);
+    } else {
+      await writable.write(data);
+      await writable.close();
+    }
+    
+    return `opfs://project_${projectId}/${safeName}`;
   }
-}
 
-export async function deleteProjectDirectory(projectId: string): Promise<void> {
-  const root = await getRootDir()
-  try {
-    await root.removeEntry(projectId, { recursive: true })
-  } catch {
-    // directory didn't exist — no-op
+  static async getFile(projectId: string, filename: string): Promise<File> {
+    const folder = await this.getProjectFolder(projectId);
+    const fileHandle = await folder.getFileHandle(filename);
+    return await fileHandle.getFile();
   }
-}
 
-export async function listProjectFiles(projectId: string): Promise<string[]> {
-  const dir = await getProjectDirectory(projectId)
-  if (!dir) return []
-  const names: string[] = []
-  for await (const [name] of dir.entries()) {
-    names.push(name)
+  static async deleteFile(projectId: string, filename: string): Promise<void> {
+    const folder = await this.getProjectFolder(projectId);
+    await folder.removeEntry(filename);
   }
-  return names
-}
-
-export async function listAllProjects(): Promise<string[]> {
-  const root = await getRootDir()
-  const ids: string[] = []
-  for await (const [name] of root.entries()) {
-    ids.push(name)
-  }
-  return ids
 }

@@ -1,130 +1,79 @@
-import { create } from 'zustand'
-import { v4 as uuid } from 'uuid'
-import type { Clip, SlotType, ConcatJob, UploadProgressEntry } from '../../types'
+import { create } from 'zustand';
+import type { Clip, UploadProgressEntry } from '../../types';
 
-interface ClipStore {
-  clips: Record<string, Clip[]>
-  concatJob: ConcatJob
-  uploads: Record<string, UploadProgressEntry>
-
-  addClip: (projectId: string, slot: SlotType, meta: Omit<Clip, 'id' | 'projectId' | 'slot' | 'order' | 'createdAt'>) => Clip
-  removeClip: (projectId: string, slot: SlotType, clipId: string) => void
-  toggleMute: (projectId: string, slot: SlotType, clipId: string) => void
-  reorderClips: (projectId: string, slot: SlotType, from: number, to: number) => void
-  clearSlot: (projectId: string, slot: SlotType) => void
-  getSlotClips: (projectId: string, slot: SlotType) => Clip[]
-
-  setConcatJob: (job: Partial<ConcatJob>) => void
-  resetConcatJob: () => void
-
-  setUploadProgress: (id: string, entry: Partial<UploadProgressEntry>) => void
-  removeUploadProgress: (id: string) => void
+interface ClipState {
+  clips: Record<string, { A: Clip[]; B: Clip[] }>;
+  uploads: Record<string, UploadProgressEntry>;
+  concatJob: { status: 'idle' | 'loading-ffmpeg' | 'concatenating' | 'done' | 'error' };
+  
+  getSlotClips: (projectId: string, slot: 'A' | 'B') => Clip[];
+  addClip: (projectId: string, slot: 'A' | 'B', clip: Clip) => void;
+  removeClip: (projectId: string, slot: 'A' | 'B', clipId: string) => void;
+  toggleMute: (projectId: string, slot: 'A' | 'B', clipId: string) => void;
+  initUpload: (entry: UploadProgressEntry) => void;
+  setUploadProgress: (clipId: string, progress: number, status: UploadProgressEntry['status'], error?: string) => void;
+  setConcatStatus: (status: ClipState['concatJob']['status']) => void;
 }
 
-export const useClipStore = create<ClipStore>((set, get) => ({
+export const useClipStore = create<ClipState>((set, get) => ({
   clips: {},
-  concatJob: { status: 'idle', progress: 0 },
   uploads: {},
-
-  addClip: (projectId, slot, meta) => {
-    const clip: Clip = {
-      ...meta,
-      id: uuid(),
-      projectId,
-      slot,
-      order: 0,
-      createdAt: Date.now(),
-    }
-    set((s) => {
-      const key = `${projectId}-${slot}`
-      const existing = s.clips[key] ?? []
-      clip.order = existing.length
-      return {
-        clips: { ...s.clips, [key]: [...existing, clip] },
-      }
-    })
-    return clip
-  },
-
-  removeClip: (projectId, slot, clipId) => {
-    set((s) => {
-      const key = `${projectId}-${slot}`
-      const existing = s.clips[key] ?? []
-      const filtered = existing
-        .filter((c) => c.id !== clipId)
-        .map((c, i) => ({ ...c, order: i }))
-      return {
-        clips: { ...s.clips, [key]: filtered },
-      }
-    })
-  },
-
-  toggleMute: (projectId, slot, clipId) => {
-    set((s) => {
-      const key = `${projectId}-${slot}`
-      const existing = s.clips[key] ?? []
-      return {
-        clips: {
-          ...s.clips,
-          [key]: existing.map((c) =>
-            c.id === clipId ? { ...c, muted: !c.muted } : c
-          ),
-        },
-      }
-    })
-  },
-
-  reorderClips: (projectId, slot, from, to) => {
-    set((s) => {
-      const key = `${projectId}-${slot}`
-      const existing = [...(s.clips[key] ?? [])]
-      const [moved] = existing.splice(from, 1)
-      existing.splice(to, 0, moved)
-      return {
-        clips: {
-          ...s.clips,
-          [key]: existing.map((c, i) => ({ ...c, order: i })),
-        },
-      }
-    })
-  },
-
-  clearSlot: (projectId, slot) => {
-    set((s) => {
-      const key = `${projectId}-${slot}`
-      const next = { ...s.clips }
-      delete next[key]
-      return { clips: next }
-    })
-  },
+  concatJob: { status: 'idle' },
 
   getSlotClips: (projectId, slot) => {
-    const key = `${projectId}-${slot}`
-    return (get().clips[key] ?? []).sort((a, b) => a.order - b.order)
+    const projectClips = get().clips[projectId];
+    if (!projectClips) return [];
+    return projectClips[slot] || [];
   },
 
-  setConcatJob: (job) => {
-    set((s) => ({ concatJob: { ...s.concatJob, ...job } }))
-  },
+  addClip: (projectId, slot, clip) => set((state) => {
+    const currentProject = state.clips[projectId] || { A: [], B: [] };
+    const updatedSlot = [...currentProject[slot], clip];
+    return {
+      clips: {
+        ...state.clips,
+        [projectId]: { ...currentProject, [slot]: updatedSlot }
+      }
+    };
+  }),
 
-  resetConcatJob: () => {
-    set({ concatJob: { status: 'idle', progress: 0 } })
-  },
+  removeClip: (projectId, slot, clipId) => set((state) => {
+    const currentProject = state.clips[projectId] || { A: [], B: [] };
+    const updatedSlot = currentProject[slot].filter((c) => c.id !== clipId);
+    return {
+      clips: {
+        ...state.clips,
+        [projectId]: { ...currentProject, [slot]: updatedSlot }
+      }
+    };
+  }),
 
-  setUploadProgress: (id, entry) => {
-    set((s) => ({
+  toggleMute: (projectId, slot, clipId) => set((state) => {
+    const currentProject = state.clips[projectId] || { A: [], B: [] };
+    const updatedSlot = currentProject[slot].map((c) => 
+      c.id === clipId ? { ...c, muted: !c.muted } : c
+    );
+    return {
+      clips: {
+        ...state.clips,
+        [projectId]: { ...currentProject, [slot]: updatedSlot }
+      }
+    };
+  }),
+
+  initUpload: (entry) => set((state) => ({
+    uploads: { ...state.uploads, [entry.clipId]: entry }
+  })),
+
+  setUploadProgress: (clipId, progress, status, error) => set((state) => {
+    if (!state.uploads[clipId]) return {};
+    return {
       uploads: {
-        ...s.uploads,
-        [id]: { ...(s.uploads[id] ?? { clipId: id, fileName: '', progress: 0, status: 'queued' }), ...entry },
-      },
-    }))
-  },
+        ...state.uploads,
+        [clipId]: { ...state.uploads[clipId], progress, status, error }
+      }
+    };
+  }),
 
-  removeUploadProgress: (id) => {
-    set((s) => {
-      const next = { ...s.uploads }
-      delete next[id]
-      return { uploads: next }
-    })
-  },
-}))
+  setConcatStatus: (status) => set({ concatJob: { status } })
+}));

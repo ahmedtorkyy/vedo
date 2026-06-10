@@ -1,1 +1,1 @@
-export { AudioOrchestrator, audioOrchestrator } from './AudioOrchestrator'
+export { AudioOrchestrator } from './AudioOrchestrator'

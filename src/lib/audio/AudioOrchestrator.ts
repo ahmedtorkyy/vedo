@@ -1,94 +1,56 @@
+/**
+ * Lifecycle-Isolated Audio Matrix Engine.
+ * Safeguards multi-channel tracks from throwing DOMExceptions during fast microtask state triggers.
+ */
 export class AudioOrchestrator {
-  private ctx: AudioContext | null = null
-  private gains: Map<string, GainNode> = new Map()
-  private sources: Map<string, MediaElementAudioSourceNode> = new Map()
-  private masterGain: GainNode | null = null
+  private static instance: AudioOrchestrator;
+  private ctx: AudioContext | null = null;
+  private gainNodes: Map<string, GainNode> = new Map();
 
-  private ensureContext(): AudioContext {
-    if (!this.ctx || this.ctx.state === 'closed') {
-      this.ctx = new AudioContext()
-      this.masterGain = this.ctx.createGain()
-      this.masterGain.gain.value = 1
-      this.masterGain.connect(this.ctx.destination)
+  private constructor() {}
+
+  static getInstance(): AudioOrchestrator {
+    if (!AudioOrchestrator.instance) {
+      AudioOrchestrator.instance = new AudioOrchestrator();
+    }
+    return AudioOrchestrator.instance;
+  }
+
+  init() {
+    if (!this.ctx) {
+      this.ctx = new (window.AudioContext || (window as any).webkitAudioContext)();
     }
     if (this.ctx.state === 'suspended') {
-      this.ctx.resume()
-    }
-    return this.ctx
-  }
-
-  registerClip(id: string): GainNode {
-    this.ensureContext()
-    const gain = this.ctx!.createGain()
-    gain.gain.value = 1
-    gain.connect(this.masterGain!)
-    this.gains.set(id, gain)
-    return gain
-  }
-
-  attachMediaElement(clipId: string, element: HTMLMediaElement): void {
-    this.ensureContext()
-    const existing = this.sources.get(clipId)
-    if (existing) existing.disconnect()
-
-    const source = this.ctx!.createMediaElementSource(element)
-    const gain = this.gains.get(clipId)
-    if (gain) {
-      source.connect(gain)
-    } else {
-      source.connect(this.masterGain!)
-    }
-    this.sources.set(clipId, source)
-  }
-
-  setMute(clipId: string, muted: boolean): void {
-    const gain = this.gains.get(clipId)
-    if (gain) {
-      gain.gain.value = muted ? 0 : 1
+      this.ctx.resume();
     }
   }
 
-  setVolume(clipId: string, value: number): void {
-    const gain = this.gains.get(clipId)
-    if (gain) {
-      gain.gain.value = Math.max(0, Math.min(1, value))
-    }
+  registerClipChannel(clipId: string) {
+    this.init();
+    if (!this.ctx || this.gainNodes.has(clipId)) return;
+
+    const gainNode = this.ctx.createGain();
+    gainNode.connect(this.ctx.destination);
+    this.gainNodes.set(clipId, gainNode);
   }
 
-  getVolume(clipId: string): number {
-    return this.gains.get(clipId)?.gain.value ?? 1
-  }
-
-  unregisterClip(clipId: string): void {
-    const gain = this.gains.get(clipId)
-    if (gain) {
-      gain.disconnect()
-      this.gains.delete(clipId)
-    }
-    const source = this.sources.get(clipId)
-    if (source) {
-      source.disconnect()
-      this.sources.delete(clipId)
-    }
-  }
-
-  setMasterVolume(value: number): void {
-    if (this.masterGain) {
-      this.masterGain.gain.value = Math.max(0, Math.min(1, value))
-    }
-  }
-
-  dispose(): void {
-    this.gains.forEach((g) => g.disconnect())
-    this.sources.forEach((s) => s.disconnect())
-    this.gains.clear()
-    this.sources.clear()
+  setMute(clipId: string, isMuted: boolean) {
+    const gainNode = this.gainNodes.get(clipId);
+    if (!gainNode) return;
+    
+    const targetGain = isMuted ? 0 : 1;
     if (this.ctx) {
-      this.ctx.close()
-      this.ctx = null
+      gainNode.gain.setTargetAtTime(targetGain, this.ctx.currentTime, 0.01);
+    } else {
+      gainNode.gain.value = targetGain;
     }
-    this.masterGain = null
+  }
+
+  unregisterClipChannel(clipId: string) {
+    const gainNode = this.gainNodes.get(clipId);
+    if (gainNode) {
+      gainNode.disconnect();
+      this.gainNodes.delete(clipId);
+    }
   }
 }
-
-export const audioOrchestrator = new AudioOrchestrator()

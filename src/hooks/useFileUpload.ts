@@ -1,94 +1,63 @@
-import { useCallback } from 'react'
-import { v4 as uuid } from 'uuid'
-import { useClipStore } from '../lib/state'
-import { createProjectDirectory, streamFileToOPFS } from '../lib/opfs'
-
-function cleanupUploadEntry(clipId: string, delayMs = 4000): void {
-  setTimeout(() => {
-    useClipStore.getState().removeUploadProgress(clipId)
-  }, delayMs)
-}
+import { useCallback } from 'react';
+import { v4 as uuidv4 } from 'uuid';
+import { useClipStore } from '../lib/state';
+import { ProjectStorage } from '../lib/opfs/project-storage';
+import { AudioOrchestrator } from '../lib/audio/AudioOrchestrator';
 
 interface UploadOptions {
-  projectId: string
-  slot: 'A' | 'B'
-  files: FileList | File[]
-  onFileStart?: (fileName: string) => void
-  onFileComplete?: (fileName: string) => void
-  onAllComplete?: () => void
-}
-
-const SUPPORTED_TYPES = new Set([
-  'video/mp4', 'video/webm', 'video/ogg', 'video/quicktime',
-  'video/x-msvideo', 'video/x-matroska',
-  'audio/mpeg', 'audio/wav', 'audio/ogg', 'audio/webm', 'audio/mp4',
-  'image/png', 'image/jpeg', 'image/webp',
-])
-
-function validateFile(file: File): string | null {
-  if (!SUPPORTED_TYPES.has(file.type) && file.type.startsWith('video/') === false) {
-    return `Unsupported file type: ${file.type}`
-  }
-  if (file.size === 0) {
-    return 'File is empty'
-  }
-  if (file.size > 2 * 1024 * 1024 * 1024) {
-    return 'File exceeds 2GB limit'
-  }
-  return null
+  projectId: string;
+  slot: 'A' | 'B';
+  files: FileList;
+  onFileStart?: (name: string) => void;
+  onFileComplete?: (name: string) => void;
+  onAllComplete?: () => void;
 }
 
 export function useFileUpload() {
-  const addClip = useClipStore((s) => s.addClip)
-  const setUploadProgress = useClipStore((s) => s.setUploadProgress)
-  const removeUploadProgress = useClipStore((s) => s.removeUploadProgress)
+  const initUpload = useClipStore((s) => s.initUpload);
+  const setUploadProgress = useClipStore((s) => s.setUploadProgress);
+  const addClip = useClipStore((s) => s.addClip);
 
   const uploadFiles = useCallback(async (options: UploadOptions) => {
-    const { projectId, slot, files, onFileStart, onFileComplete, onAllComplete } = options
-    const fileArray = Array.from(files)
+    const { projectId, slot, files, onFileStart, onFileComplete, onAllComplete } = options;
+    const audioMatrix = AudioOrchestrator.getInstance();
 
-    const dir = await createProjectDirectory(projectId)
+    for (let i = 0; i < files.length; i++) {
+      const file = files[i];
+      const clipId = uuidv4();
 
-    for (const file of fileArray) {
-      const error = validateFile(file)
-      if (error) {
-        setUploadProgress(uuid(), { fileName: file.name, status: 'error', error })
-        continue
-      }
+      initUpload({
+        clipId,
+        fileName: file.name,
+        progress: 0,
+        status: 'uploading'
+      });
 
-      const clipId = uuid()
-      setUploadProgress(clipId, { clipId, fileName: file.name, progress: 0, status: 'queued' })
-      onFileStart?.(file.name)
-
-      setUploadProgress(clipId, { status: 'uploading', progress: 0 })
+      onFileStart?.(file.name);
 
       try {
-        await streamFileToOPFS(dir, file, (loaded, total) => {
-          const pct = Math.round((loaded / total) * 100)
-          setUploadProgress(clipId, { progress: pct })
-        })
+        const opfsPath = await ProjectStorage.saveFile(projectId, `${clipId}_${file.name}`, file);
+        
+        audioMatrix.registerClipChannel(clipId);
 
-        setUploadProgress(clipId, { status: 'done', progress: 100 })
-        cleanupUploadEntry(clipId)
+        setUploadProgress(clipId, 100, 'done');
 
         addClip(projectId, slot, {
+          id: clipId,
           fileName: file.name,
           fileSize: file.size,
+          filePath: opfsPath,
           duration: 0,
-          width: 0,
-          height: 0,
-          muted: false,
-        })
+          muted: false
+        });
 
-        onFileComplete?.(file.name)
-      } catch (err) {
-        setUploadProgress(clipId, { status: 'error', error: String(err) })
-        cleanupUploadEntry(clipId)
+        onFileComplete?.(file.name);
+      } catch (err: any) {
+        setUploadProgress(clipId, 0, 'error', err?.message || 'OPFS sandboxing write failed.');
       }
     }
+    onAllComplete?.();
+  }, [initUpload, setUploadProgress, addClip]);
 
-    onAllComplete?.()
-  }, [addClip, setUploadProgress, removeUploadProgress])
-
-  return { uploadFiles }
+  return { uploadFiles };
 }

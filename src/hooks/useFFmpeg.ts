@@ -1,7 +1,7 @@
 import { useEffect, useCallback } from 'react'
 import { loadFFmpeg, concatClips, terminateWorker } from '../lib/ffmpeg'
 import { useClipStore } from '../lib/state'
-import { getProjectDirectory, getFileHandle, deleteFile } from '../lib/opfs'
+import { ProjectStorage } from '../lib/opfs'
 
 export function useFFmpeg() {
   const concatJob = useClipStore((s) => s.concatJob)
@@ -15,49 +15,32 @@ export function useFFmpeg() {
     const store = useClipStore.getState()
     const clips = store.getSlotClips(projectId, 'A')
     if (clips.length < 2) {
-      store.setConcatJob({ status: clips.length === 1 ? 'done' : 'idle', progress: 100 })
-      return
-    }
-
-    const dir = await getProjectDirectory(projectId)
-    if (!dir) {
-      store.setConcatJob({ status: 'error', error: 'Project directory not found' })
+      store.setConcatStatus(clips.length === 1 ? 'done' : 'idle')
       return
     }
 
     const clipData: { name: string; data: ArrayBuffer }[] = []
     try {
       for (const clip of clips) {
-        const handle = await getFileHandle(dir, clip.fileName)
-        if (!handle) continue
-        const file = await handle.getFile()
+        const file = await ProjectStorage.getFile(projectId, clip.fileName)
         const buffer = await file.arrayBuffer()
         clipData.push({ name: clip.fileName, data: buffer })
       }
     } catch (err) {
-      store.setConcatJob({ status: 'error', error: String(err) })
+      store.setConcatStatus('error')
       return
     }
 
     if (clipData.length < 2) {
-      const status = clipData.length === 1 ? 'done' : 'idle'
-      store.setConcatJob({ status, progress: 100 })
+      store.setConcatStatus(clipData.length === 1 ? 'done' : 'idle')
       return
     }
 
     try {
       const result = await concatClips(clipData)
-
-      const existing = await getFileHandle(dir, '_concat_output.mp4')
-      if (existing) {
-        await deleteFile(dir, '_concat_output.mp4')
-      }
-      const outHandle = await dir.getFileHandle('_concat_output.mp4', { create: true })
-      const writable = await outHandle.createWritable()
-      await writable.write(result)
-      await writable.close()
+      await ProjectStorage.saveFile(projectId, '_concat_output.mp4', new Blob([result]))
     } catch (err) {
-      store.setConcatJob({ status: 'error', error: String(err) })
+      store.setConcatStatus('error')
     }
   }, [])
 

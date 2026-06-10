@@ -26,41 +26,28 @@ function getWorker(): Worker {
 }
 
 function handleWorkerError(err: ErrorEvent): void {
-  const msg = err.message ?? 'Unknown worker error'
-  useClipStore.getState().setConcatJob({ status: 'error', error: msg })
-  pendingConcat?.reject(new Error(msg))
+  useClipStore.getState().setConcatStatus('error')
+  pendingConcat?.reject(new Error(err.message ?? 'Unknown worker error'))
   pendingConcat = null
   isRunning = false
 }
 
 function handleWorkerMessage(e: MessageEvent) {
-  const { type, progress, data, error, detail } = e.data
+  const { type } = e.data
 
   if (type === 'ffmpeg-loaded') {
-    useClipStore.getState().setConcatJob({ status: 'idle', progress: 0 })
-    return
-  }
-
-  if (type === 'memfs-warning') {
-    useClipStore.getState().setConcatJob({ status: 'concatenating', progress: 0 })
-    return
-  }
-
-  if (type === 'oom-error') {
-    useClipStore.getState().setConcatJob({ status: 'error', error: 'FFmpeg ran out of memory. Try with smaller files.' })
+    useClipStore.getState().setConcatStatus('idle')
     return
   }
 
   if (type === 'concat-progress') {
-    useClipStore.getState().setConcatJob({
-      status: 'concatenating',
-      progress: Math.round(progress * 100),
-    })
+    useClipStore.getState().setConcatStatus('concatenating')
     return
   }
 
   if (type === 'concat-done') {
-    useClipStore.getState().setConcatJob({ status: 'done', progress: 100 })
+    const { data } = e.data
+    useClipStore.getState().setConcatStatus('done')
     pendingConcat?.resolve(new Uint8Array(data))
     pendingConcat = null
     isRunning = false
@@ -68,25 +55,25 @@ function handleWorkerMessage(e: MessageEvent) {
   }
 
   if (type === 'concat-error') {
-    useClipStore.getState().setConcatJob({ status: 'error', error })
-    pendingConcat?.reject(new Error(error))
+    useClipStore.getState().setConcatStatus('error')
+    pendingConcat?.reject(new Error(e.data.error ?? 'Concat failed'))
     pendingConcat = null
     isRunning = false
     return
   }
 
   if (type === 'load-error') {
-    const friendly = KNOWN_WORKER_ERRORS.has(error ?? '')
-      ? 'Cross-origin isolation not enabled. The app needs COOP/COEP headers for the processing engine.'
-      : error
-    useClipStore.getState().setConcatJob({ status: 'error', error: friendly })
+    const friendly = KNOWN_WORKER_ERRORS.has(e.data.error ?? '')
+      ? 'Cross-origin isolation not enabled.'
+      : e.data.error
+    useClipStore.getState().setConcatStatus('error')
     isRunning = false
     return
   }
 }
 
 export async function loadFFmpeg(): Promise<void> {
-  useClipStore.getState().setConcatJob({ status: 'loading-ffmpeg', progress: 0 })
+  useClipStore.getState().setConcatStatus('loading-ffmpeg')
   getWorker().postMessage({ type: 'load' })
 }
 
@@ -98,7 +85,7 @@ export async function concatClips(
   }
   isRunning = true
 
-  useClipStore.getState().setConcatJob({ status: 'concatenating', progress: 0 })
+  useClipStore.getState().setConcatStatus('concatenating')
 
   return new Promise<Uint8Array>((resolve, reject) => {
     pendingConcat = { resolve, reject }

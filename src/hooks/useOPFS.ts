@@ -1,18 +1,19 @@
 import { useCallback } from 'react'
-import { createProjectDirectory, getProjectDirectory, deleteProjectDirectory } from '../lib/opfs'
+import { ProjectStorage } from '../lib/opfs'
 
 export function useOPFS() {
-  const ensureProjectDir = useCallback(async (projectId: string) => {
-    return createProjectDirectory(projectId)
-  }, [])
-
   const getDir = useCallback(async (projectId: string) => {
-    return getProjectDirectory(projectId)
+    return ProjectStorage.getProjectFolder(projectId)
   }, [])
 
   const deleteDir = useCallback(async (projectId: string) => {
-    await deleteProjectDirectory(projectId)
+    const root = await navigator.storage.getDirectory()
+    try {
+      await root.removeEntry(`project_${projectId}`, { recursive: true })
+    } catch {
+      // no-op
+    }
   }, [])
 
-  return { ensureProjectDir, getDir, deleteDir }
+  return { getDir, deleteDir }
 }
