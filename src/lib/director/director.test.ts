@@ -385,6 +385,49 @@ describe('parseInstructions content references', () => {
     expect(result.contentReferences.length).toBeGreaterThanOrEqual(1)
     expect(result.contentReferences[0].toLowerCase()).toContain('review')
   })
+
+  it('multi-removal in one sentence produces exactly one reference per clause', () => {
+    const result = parseInstructions('remove the part about the sauce and remove the part where I talk about pricing')
+    expect(result.contentReferences).toHaveLength(2)
+    expect(result.contentReferences[0].toLowerCase()).toContain('sauce')
+    expect(result.contentReferences[1].toLowerCase()).toContain('pricing')
+  })
+
+  it('dedup eliminates redundant longer variants of the same clause', () => {
+    const result = parseInstructions('remove the part about the sauce')
+    const hasVariant = result.contentReferences.some((r) => r.toLowerCase().includes('part') || r.toLowerCase().includes('about'))
+    expect(hasVariant).toBe(false)
+    expect(result.contentReferences.some((r) => r.toLowerCase() === 'sauce')).toBe(true)
+  })
+
+  it('parses cut the section where I mention the discount', () => {
+    const result = parseInstructions('cut the section where I mention the discount')
+    expect(result.contentReferences.length).toBeGreaterThanOrEqual(1)
+    expect(result.contentReferences[0].toLowerCase()).toContain('discount')
+  })
+
+  it('parses trim the clip where I discuss the intro', () => {
+    const result = parseInstructions('trim the clip where I discuss the intro')
+    expect(result.contentReferences.length).toBeGreaterThanOrEqual(1)
+    expect(result.contentReferences[0].toLowerCase()).toContain('intro')
+  })
+
+  it('parses delete the bit about the sponsor', () => {
+    const result = parseInstructions('delete the bit about the sponsor')
+    expect(result.contentReferences.length).toBeGreaterThanOrEqual(1)
+    expect(result.contentReferences[0].toLowerCase()).toContain('sponsor')
+  })
+
+  it('parses remove the section where you say the bad review', () => {
+    const result = parseInstructions('remove the section where you say the bad review')
+    expect(result.contentReferences.length).toBeGreaterThanOrEqual(1)
+    expect(result.contentReferences[0].toLowerCase()).toContain('bad review')
+  })
+
+  it('parses multiple cut variants in one sentence', () => {
+    const result = parseInstructions('cut the part about the intro and trim the bit where I discuss pricing')
+    expect(result.contentReferences).toHaveLength(2)
+  })
 })
 
 describe('parseInstructions jumpCuts', () => {

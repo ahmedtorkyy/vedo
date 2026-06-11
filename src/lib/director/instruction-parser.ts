@@ -138,23 +138,28 @@ const MULTICAM_PATTERNS: { regex: RegExp; value: boolean }[] = [
   { regex: /\b(?:different\s*angles|camera\s*switch)\b/i, value: true },
 ]
 
-const CLAUSE_BOUNDARY = '(?:keep|make|use|add|set|with|without|and|but|under|then|also|please|transition|zoom|effect|overlay|caption|speed|audio|slow|fast|remove|cut|skip|delete|focus|section|segment)'
+const CLAUSE_BOUNDARY = '(?:keep|make|use|add|set|with|without|and|but|under|then|also|please|transition|zoom|effect|overlay|caption|speed|audio|slow|fast|remove|cut|skip|delete|focus)'
+const VERB = '(?:remove|cut|trim|skip|delete)'
+const NOUN = '(?:part|section|bit|clip|segment)'
+const TALK_VERB = '(?:talk|speak|mention|say|discuss)'
 const CONTENT_REF_PATTERNS: RegExp[] = [
-  new RegExp(`\\bremove\\s+the\\s+part\\s+about\\s+(.+?)(?:\\.|,|;|\\b${CLAUSE_BOUNDARY}|$)`, 'gi'),
-  new RegExp(`\\bremove\\s+the\\s+part\\s+where\\s+(?:I\\s+)?(?:talk|speak|mention)\\s+about\\s+(.+?)(?:\\.|,|;|\\b${CLAUSE_BOUNDARY}|$)`, 'gi'),
-  new RegExp(`\\bremove\\s+the\\s+part\\s+where\\s+(.+?)(?:\\.|,|;|\\b${CLAUSE_BOUNDARY}|$)`, 'gi'),
-  new RegExp(`\\bcut\\s+(?:the\\s+)?(?:part|section|segment)\\s+(?:about|on|of)\\s+(.+?)(?:\\.|,|;|\\b${CLAUSE_BOUNDARY}|$)`, 'gi'),
-  new RegExp(`\\b(?:skip|delete|remove)\\s+(.+?)(?:\\s+(?:section|segment)|\\.|,|;|\\b${CLAUSE_BOUNDARY}|$)`, 'gi'),
+  new RegExp(`\\b${VERB}\\s+(?:the\\s+)?${NOUN}\\s+(?:about|on|of)\\s+(.+?)(?:\\.|,|;|\\b${CLAUSE_BOUNDARY}|$)`, 'gi'),
+  new RegExp(`\\b${VERB}\\s+(?:the\\s+)?${NOUN}\\s+where\\s+(?:(?:I\\s+)?${TALK_VERB}\\s+(?:about\\s+)?)?(.+?)(?:\\.|,|;|\\b${CLAUSE_BOUNDARY}|$)`, 'gi'),
+  new RegExp(`\\b${VERB}\\s+(.+?)(?:\\.|,|;|\\b${CLAUSE_BOUNDARY}|$)`, 'gi'),
   new RegExp(`\\b(?:keep\\s+only|focus\\s+on)\\s+(.+?)(?:\\.|,|;|\\b${CLAUSE_BOUNDARY}|$)`, 'gi'),
 ]
 
 const CONTENT_REF_STOPWORDS = new Set([
   'the', 'a', 'an', 'this', 'that', 'these', 'those', 'it', 'its', 'they', 'them',
   'and', 'or', 'but', 'if', 'so', 'then', 'just', 'also', 'please', 'with', 'without',
-  'under', 'keep', 'make', 'use', 'add', 'set', 'remove', 'cut', 'skip', 'delete',
-  'get', 'go', 'do', 'be', 'have', 'will', 'can', 'would', 'could', 'should', 'may',
+  'under', 'keep', 'make', 'use', 'add', 'set', 'remove', 'cut', 'skip', 'delete', 'trim',
+  'get', 'go', 'is', 'are', 'was', 'were', 'been', 'being', 'am',
+  'has', 'have', 'had', 'having', 'do', 'does', 'did', 'done',
+  'will', 'would', 'could', 'should', 'may', 'might', 'shall', 'can', 'need',
   'about', 'on', 'of', 'for', 'in', 'at', 'by', 'to', 'from', 'as', 'into',
-  'part', 'section', 'segment',
+  'where', 'when', 'what', 'which', 'who', 'whom', 'whose', 'why', 'how',
+  'part', 'section', 'segment', 'bit', 'clip',
+  'talk', 'speak', 'mention', 'say', 'discuss',
 ])
 
 const CAPTION_PATTERNS: { regex: RegExp; value: boolean }[] = [
@@ -242,13 +247,21 @@ function findContentReferences(text: string): string[] {
       while (words.length > 0 && CONTENT_REF_STOPWORDS.has(words[words.length - 1].toLowerCase())) {
         words.pop()
       }
+      while (words.length > 0 && CONTENT_REF_STOPWORDS.has(words[0].toLowerCase())) {
+        words.shift()
+      }
       phrase = words.join(' ')
       if (phrase.length < 3) continue
       if (/^\d+$/.test(phrase)) continue
       if (!refs.includes(phrase)) refs.push(phrase)
     }
   }
-  return refs
+  const deduped: string[] = []
+  for (const r of refs) {
+    const hasShorter = refs.some((other) => other !== r && other.length < r.length && r.toLowerCase().includes(other.toLowerCase()))
+    if (!hasShorter) deduped.push(r)
+  }
+  return deduped
 }
 
 function findTargetDuration(text: string): number | null {
