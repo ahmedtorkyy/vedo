@@ -115,7 +115,7 @@ self.onmessage = async (e: MessageEvent) => {
   const { type, payload } = e.data
 
   if (type === 'load') {
-    await loadModel(payload?.model ?? 'whisper-tiny')
+    await loadModel(payload?.model ?? 'whisper-base')
     return
   }
 

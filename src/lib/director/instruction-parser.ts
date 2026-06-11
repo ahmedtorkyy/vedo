@@ -24,7 +24,6 @@ const TRANSITION_PATTERNS: { regex: RegExp; value: TransitionLevel }[] = [
   { regex: /\b(?:smooth|slow)\s*(?:transitions|cuts|dissolve)\b/i, value: 'light' },
   { regex: /\b(?:fast|quick|rapid)\s*(?:transitions|cuts|edits?)\b/i, value: 'heavy' },
   { regex: /\b(?:dissolve|fade)\b/i, value: 'light' },
-  { regex: /\b(?:cut|jump\s*cut)\b/i, value: 'heavy' },
   { regex: /(?:انتقالات?|قص|تقطيع)\s*(?:بسيط|خفيف|قليل)/i, value: 'minimal' },
   { regex: /(?:انتقالات?|قص|تقطيع)\s*(?:كثير|كثيرة|متكرر|سريع|عنيف)/i, value: 'heavy' },
   { regex: /(?:انتقالات?|قص|تقطيع)\s*(?:ديناميكي|سلس|متوسط)/i, value: 'dynamic' },
@@ -69,7 +68,7 @@ const EFFECTS_PATTERNS: { regex: RegExp; value: EffectsLevel }[] = [
 ]
 
 const FRAMING_PATTERNS: { regex: RegExp; value: 'close-up' | 'medium' | 'wide' }[] = [
-  { regex: /\b(?:close.?up|tight|detail|face|intimate)\b/i, value: 'close-up' },
+  { regex: /\b(?:close.?up|tight|detail|intimate)\b/i, value: 'close-up' },
   { regex: /\b(?:medium|waist|chest|standard)\s*(?:shot|framing)\b/i, value: 'medium' },
   { regex: /\b(?:wide|full|establishing|environment|landscape)\s*(?:shot|framing)\b/i, value: 'wide' },
   { regex: /(?:قريب|وجه|تفاصيل|عن.?قرب|مكبر)/i, value: 'close-up' },
@@ -139,12 +138,20 @@ const MULTICAM_PATTERNS: { regex: RegExp; value: boolean }[] = [
   { regex: /\b(?:different\s*angles|camera\s*switch)\b/i, value: true },
 ]
 
+const CLAUSE_BOUNDARY = '(?:keep|make|use|add|set|with|without|and|but|under|then|also|please|transition|zoom|effect|overlay|caption|speed|audio|slow|fast|remove|cut|skip|delete|focus|part|section|segment)'
 const CONTENT_REF_PATTERNS: RegExp[] = [
-  /\bremove\s+the\s+part\s+about\s+(.+?)(?:\.|,|and|$)/gi,
-  /\bcut\s+(?:the\s+)?(?:part|section|segment)\s+(?:about|on|of)\s+(.+?)(?:\.|,|and|$)/gi,
-  /\b(?:skip|delete|remove)\s+(.+?)(?:\s+part|\s+section|\s*\.|\s*,|$)/gi,
-  /\b(?:keep\s+only|focus\s+on)\s+(.+?)(?:\.|,|and|$)/gi,
+  new RegExp(`\\bremove\\s+the\\s+part\\s+about\\s+(.+?)(?:\\.|,|;|\\b${CLAUSE_BOUNDARY}|$)`, 'gi'),
+  new RegExp(`\\bcut\\s+(?:the\\s+)?(?:part|section|segment)\\s+(?:about|on|of)\\s+(.+?)(?:\\.|,|;|\\b${CLAUSE_BOUNDARY}|$)`, 'gi'),
+  new RegExp(`\\b(?:skip|delete|remove)\\s+(.+?)(?:\\s+(?:part|section|segment)|\\.|,|;|\\b${CLAUSE_BOUNDARY}|$)`, 'gi'),
+  new RegExp(`\\b(?:keep\\s+only|focus\\s+on)\\s+(.+?)(?:\\.|,|;|\\b${CLAUSE_BOUNDARY}|$)`, 'gi'),
 ]
+
+const CONTENT_REF_STOPWORDS = new Set([
+  'the', 'a', 'an', 'this', 'that', 'these', 'those', 'it', 'its', 'they', 'them',
+  'and', 'or', 'but', 'if', 'so', 'then', 'just', 'also', 'please', 'with', 'without',
+  'under', 'keep', 'make', 'use', 'add', 'set', 'remove', 'cut', 'skip', 'delete',
+  'get', 'go', 'do', 'be', 'have', 'will', 'can', 'would', 'could', 'should', 'may',
+])
 
 const CAPTION_PATTERNS: { regex: RegExp; value: boolean }[] = [
   { regex: /\b(?:captions?\s+on|subtitles?\s+on|add\s+captions?|include\s+subtitles?)\b/i, value: true },
@@ -226,8 +233,16 @@ function findContentReferences(text: string): string[] {
   for (const pattern of CONTENT_REF_PATTERNS) {
     const matches = text.matchAll(pattern)
     for (const m of matches) {
-      const phrase = (m[1] ?? '').trim()
-      if (phrase.length > 2) refs.push(phrase)
+      let phrase = (m[1] ?? '').trim()
+      const words = phrase.split(/\s+/)
+      while (words.length > 0 && CONTENT_REF_STOPWORDS.has(words[words.length - 1].toLowerCase())) {
+        words.pop()
+      }
+      phrase = words.join(' ')
+      if (phrase.length < 3) continue
+      if (phrase.split(/\s+/).length < 2) continue
+      if (/^\d+$/.test(phrase)) continue
+      if (!refs.includes(phrase)) refs.push(phrase)
     }
   }
   return refs
@@ -326,7 +341,7 @@ export function parseInstructions(instructions: string): InstructionOverrides {
     for (const up of unmatchedPhrases) pushDirective('unmatched', up)
   }
 
-  if (text.toLowerCase().includes('face') || text.toLowerCase().includes('always center') || text.toLowerCase().includes('centered')) {
+  if (/(?:my\s+)?face\s+(?:always\s+)?cent(?:er|re)/i.test(text) || /\balways\s+center\b/i.test(text)) {
     directives.push({ type: 'safe-frame-center', value: 'face', source: 'instruction' })
   }
 

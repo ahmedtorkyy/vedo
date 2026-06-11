@@ -2,6 +2,7 @@ import { useCallback, useEffect, useRef, useState } from 'react'
 import { useProjectStore, useClipStore, useHistoryStore } from './lib/state'
 import { useFFmpeg } from './hooks/useFFmpeg'
 import { useKeyboardShortcuts } from './hooks/useKeyboardShortcuts'
+import { backgroundLoadModel } from './lib/transcription/model-loader'
 import { MainLayout, Sidebar } from './components/layout'
 import { SlotA, SlotB } from './components/ingestion'
 import { PreviewPlayer } from './components/player'
@@ -278,6 +279,7 @@ function App() {
 
   useEffect(() => {
     restoreSession()
+    backgroundLoadModel()
     return () => { AudioOrchestrator.getInstance().dispose() }
   }, [])
 

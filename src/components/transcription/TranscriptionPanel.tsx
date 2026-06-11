@@ -1,10 +1,10 @@
-import { useState, useEffect, useCallback, useRef } from 'react'
+import { useState, useEffect, useCallback } from 'react'
 import { useClipStore } from '../../lib/state'
 import { useTranscriptionStore } from '../../lib/transcription'
 import { useTranscription } from '../../hooks/useTranscription'
 import { TranscriptionSegmentRow } from './TranscriptionSegment'
 import { CaptionEditor } from './CaptionEditor'
-import { backgroundLoadModel } from '../../lib/transcription/model-loader'
+import { isModelReady, onModelReadyChange } from '../../lib/transcription/model-loader'
 import type { AudioCleansingOptions } from '../../types'
 
 interface TranscriptionPanelProps {
@@ -13,13 +13,19 @@ interface TranscriptionPanelProps {
 
 export function TranscriptionPanel({ projectId }: TranscriptionPanelProps) {
   const [cleansing, setCleansing] = useState(false)
-  const [bgStatus, setBgStatus] = useState<'idle' | 'loading' | 'ready' | 'error' | 'data-saver'>(() => {
+  const [bgStatus, setBgStatus] = useState<'data-saver' | 'loading' | 'ready'>(() => {
     const conn = 'connection' in navigator
       ? (navigator as Navigator & { connection?: { saveData?: boolean } }).connection
       : undefined
-    return conn?.saveData === true ? 'data-saver' : 'idle'
+    if (conn?.saveData === true) return 'data-saver'
+    return isModelReady() ? 'ready' : 'loading'
   })
-  const bgStarted = useRef(false)
+
+  useEffect(() => {
+    return onModelReadyChange((ready) => {
+      setBgStatus(ready ? 'ready' : 'loading')
+    })
+  }, [])
   const selectedClipId = useClipStore((s) => (s.selectedClipId[projectId] ?? null))
   const setSelectedClipId = useClipStore((s) => s.setSelectedClipId)
   const clipsA = useClipStore((s) => s.getSlotClips(projectId, 'A'))
@@ -27,22 +33,6 @@ export function TranscriptionPanel({ projectId }: TranscriptionPanelProps) {
   const allClips = [...clipsA, ...clipsB]
   const results = useTranscriptionStore((s) => s.results)
   const { transcribeClip, cleanseClipAudio } = useTranscription()
-
-  useEffect(() => {
-    if (bgStarted.current || bgStatus !== 'idle') return
-    bgStarted.current = true
-
-    setBgStatus('loading')
-    let cancelled = false
-    backgroundLoadModel({
-      onProgress: (pct: number) => {
-        if (pct >= 100 && !cancelled) setBgStatus('ready')
-      },
-      onError: () => { if (!cancelled) setBgStatus('error') },
-      onReady: () => { if (!cancelled) setBgStatus('ready') },
-    })
-    return () => { cancelled = true }
-  }, [bgStatus])
 
   const result = selectedClipId ? results[selectedClipId] : undefined
   const selectedClip = allClips.find((c) => c.id === selectedClipId)
@@ -93,12 +83,6 @@ export function TranscriptionPanel({ projectId }: TranscriptionPanelProps) {
       {bgStatus === 'data-saver' && (
         <div role="status" className="rounded-md bg-amber-900/30 px-3 py-2 text-xs text-amber-300">
           Data Saver is on. Model download will start when you begin transcribing.
-        </div>
-      )}
-
-      {bgStatus === 'error' && (
-        <div role="status" className="rounded-md bg-red-900/30 px-3 py-2 text-xs text-red-300">
-          Background model download failed. Will retry when you start transcribing.
         </div>
       )}
 

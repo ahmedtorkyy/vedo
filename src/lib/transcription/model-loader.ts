@@ -1,30 +1,32 @@
 import { loadTranscriptionModel } from './transcription-engine'
 
-interface BackgroundLoadOptions {
-  onProgress?: (pct: number) => void
-  onError?: (err: unknown) => void
-  onReady?: () => void
-}
-
 let loaded = false
 let loading = false
 
-export async function backgroundLoadModel(options: BackgroundLoadOptions = {}): Promise<void> {
-  if (loaded) {
-    options.onReady?.()
-    return
+type Listener = (ready: boolean) => void
+const listeners = new Set<Listener>()
+
+function notify(ready: boolean) {
+  for (const fn of listeners) {
+    try { fn(ready) } catch { /* noop */ }
   }
+}
+
+export function onModelReadyChange(fn: Listener): () => void {
+  listeners.add(fn)
+  return () => { listeners.delete(fn) }
+}
+
+export async function backgroundLoadModel(): Promise<void> {
+  if (loaded) return
   if (loading) return
   loading = true
-
   try {
-    options.onProgress?.(10)
     await loadTranscriptionModel('whisper-base')
     loaded = true
-    options.onProgress?.(100)
-    options.onReady?.()
-  } catch (err) {
-    options.onError?.(err)
+    notify(true)
+  } catch {
+    notify(false)
   } finally {
     loading = false
   }
