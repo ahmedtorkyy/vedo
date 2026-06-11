@@ -1,4 +1,4 @@
-import { useCallback, useMemo, useEffect } from 'react'
+import { useCallback, useMemo, useEffect, useRef } from 'react'
 import { useClipStore } from '../../lib/state'
 import { useDirector } from '../../hooks/useDirector'
 import { STYLE_LABELS, inferStyle, parseInstructions, generateSuggestions, useDirectorStore } from '../../lib/director'
@@ -46,13 +46,14 @@ export function DirectorPanel({ projectId }: DirectorPanelProps) {
     generatePlan()
   }, [setInstructions, setStyle, generatePlan])
 
+  const planVersionRef = useRef(0)
+
   useEffect(() => {
     if (status === 'ready' && plan) {
-      const state = useDirectorStore.getState().state[projectId]
-      if (state && state.suggestions.length === 0) {
-        const sg = generateSuggestions(plan)
-        useDirectorStore.getState().setSuggestions(projectId, sg)
-      }
+      planVersionRef.current++
+      const sg = generateSuggestions(plan)
+      useDirectorStore.getState().setSuggestions(projectId, sg)
+      useDirectorStore.getState().setFeedbackText(projectId, '')
     }
   }, [status, plan, projectId])
 

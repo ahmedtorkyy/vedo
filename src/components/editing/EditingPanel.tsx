@@ -6,7 +6,7 @@ import { useAriaAnnouncer } from '../accessibility/AriaAnnouncer'
 import { useTranscriptionStore } from '../../lib/transcription'
 import { SilenceTimeline } from './SilenceTimeline'
 import { SmartCutPanel } from './SmartCutPanel'
-import type { SmartCutOptions } from '../../types'
+import type { SmartCutOptions, Clip } from '../../types'
 
 interface EditingPanelProps {
   projectId: string
@@ -79,10 +79,24 @@ export function EditingPanel({ projectId }: EditingPanelProps) {
     setSmartCutOptions(selectedClipId, newOptions)
   }, [selectedClipId, setSmartCutOptions])
 
+  const computeOffset = useCallback((clipId: string) => {
+    const clipsA = useClipStore.getState().getSlotClips(projectId, 'A')
+    const idx = clipsA.findIndex((c) => c.id === clipId)
+    let offset = 0
+    for (let i = 0; i < idx; i++) {
+      offset += clipsA[i].duration
+    }
+    return offset
+  }, [projectId])
+
   const handleSkip = useCallback((time: number) => {
-    useClipStore.getState().setPendingSeek(time)
-    announce(`Seeking to ${Math.floor(time / 60)}:${Math.floor(time % 60).toString().padStart(2, '0')}`)
-  }, [announce])
+    if (!selectedClipId) return
+    const offset = computeOffset(selectedClipId)
+    useClipStore.getState().setPendingSeek(offset + time)
+    const m = Math.floor((offset + time) / 60)
+    const s = Math.floor((offset + time) % 60)
+    announce(`Seeking to ${m}:${s.toString().padStart(2, '0')}`)
+  }, [selectedClipId, computeOffset, announce])
 
   const handleTrim = useCallback((index: number) => {
     if (!selectedClipId) return
@@ -114,15 +128,27 @@ export function EditingPanel({ projectId }: EditingPanelProps) {
       const { smartCutVideo } = await import('../../lib/ffmpeg')
       const outputFilename = await smartCutVideo(projectId, selectedClip.opfsFilename, segments, selectedClip.duration)
       if (outputFilename) {
+        const newDuration = selectedClip.duration - segments.reduce((sum, s) => sum + (s.end - s.start), 0)
+        const newClip: Clip = {
+          id: `cut-${selectedClipId}-${Date.now()}`,
+          fileName: `Cut: ${selectedClip.fileName}`,
+          fileSize: selectedClip.fileSize,
+          filePath: selectedClip.filePath,
+          opfsFilename: outputFilename,
+          duration: Math.max(0.1, newDuration),
+          muted: selectedClip.muted,
+        }
+        useClipStore.getState().addClip(projectId, 'A', newClip)
+        announce(`Smart cut complete. New clip "${newClip.fileName}" added.`)
         setCutStatus('done')
-        announce('Smart cut complete. Silences removed.')
+        clearSilenceSelections(selectedClipId)
       }
     } catch (err) {
       setCutStatus('error')
       setCutError(err instanceof Error ? err.message : 'Smart cut failed')
       announce('Smart cut failed', true)
     }
-  }, [projectId, selectedClipId, selectedClip, selectedOptions, announce])
+  }, [projectId, selectedClipId, selectedClip, selectedOptions, clearSilenceSelections, announce])
 
   const totalSilenceDuration = silenceSegments.reduce((sum, s) => sum + s.duration, 0)
   const clipDuration = selectedClip?.duration ?? 0
@@ -226,15 +252,17 @@ export function EditingPanel({ projectId }: EditingPanelProps) {
             </div>
           )}
 
-          {selectedSilenceIndices.length > 0 && (
+          {silenceSegments.length > 0 && (
             <div className="flex gap-2">
-              <button
-                type="button"
-                onClick={() => selectedClipId && clearSilenceSelections(selectedClipId)}
-                className="rounded-md bg-gray-700 px-2 py-1 text-[10px] text-gray-300 hover:bg-gray-600 focus:outline-none focus:ring-2 focus:ring-gray-500"
-              >
-                Clear all selections ({selectedSilenceIndices.length})
-              </button>
+              {selectedSilenceIndices.length > 0 && (
+                <button
+                  type="button"
+                  onClick={() => selectedClipId && clearSilenceSelections(selectedClipId)}
+                  className="rounded-md bg-gray-700 px-2 py-1 text-[10px] text-gray-300 hover:bg-gray-600 focus:outline-none focus:ring-2 focus:ring-gray-500"
+                >
+                  Clear ({selectedSilenceIndices.length})
+                </button>
+              )}
               <button
                 type="button"
                 onClick={() => selectedClipId && selectAllSilences(selectedClipId)}

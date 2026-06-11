@@ -43,16 +43,22 @@ export function CaptionEditor({ clipId, projectId }: CaptionEditorProps) {
   const handleStartChange = useCallback((index: number, value: string) => {
     const start = parseTime(value)
     if (!isNaN(start)) {
-      updateSegment(clipId, index, { start })
+      const seg = segments[index]
+      if (seg) {
+        updateSegment(clipId, index, { start, end: seg.end })
+      }
     }
-  }, [clipId, updateSegment])
+  }, [clipId, segments, updateSegment])
 
   const handleEndChange = useCallback((index: number, value: string) => {
     const end = parseTime(value)
     if (!isNaN(end)) {
-      updateSegment(clipId, index, { end })
+      const seg = segments[index]
+      if (seg) {
+        updateSegment(clipId, index, { start: seg.start, end })
+      }
     }
-  }, [clipId, updateSegment])
+  }, [clipId, segments, updateSegment])
 
   const handleDelete = useCallback((index: number) => {
     deleteSegment(clipId, index)
@@ -82,7 +88,9 @@ export function CaptionEditor({ clipId, projectId }: CaptionEditorProps) {
       offset += clipsA[i].duration
     }
     useClipStore.getState().setPendingSeek(offset + time)
-    announce(`Seeking to ${fmt(time)}`)
+    const m = Math.floor((offset + time) / 60)
+    const s = Math.floor((offset + time) % 60)
+    announce(`Seeking to ${m}:${s.toString().padStart(2, '0')}`)
   }, [projectId, clipId, announce])
 
   if (segments.length === 0) return null
@@ -128,16 +136,16 @@ export function CaptionEditor({ clipId, projectId }: CaptionEditorProps) {
               <span className="text-[10px] font-mono text-gray-500 shrink-0">#{i + 1}</span>
               <input
                 type="text"
-                defaultValue={fmt(seg.start)}
-                onBlur={(e) => handleStartChange(i, e.target.value)}
+                value={fmt(seg.start)}
+                onChange={(e) => handleStartChange(i, e.target.value)}
                 aria-label={`Caption ${i + 1} start time`}
                 className="w-16 rounded border border-gray-600 bg-gray-800 px-1 py-0.5 text-[10px] font-mono text-gray-200 focus:outline-none focus:ring-1 focus:ring-sky-500"
               />
               <span className="text-[10px] text-gray-500">–</span>
               <input
                 type="text"
-                defaultValue={fmt(seg.end)}
-                onBlur={(e) => handleEndChange(i, e.target.value)}
+                value={fmt(seg.end)}
+                onChange={(e) => handleEndChange(i, e.target.value)}
                 aria-label={`Caption ${i + 1} end time`}
                 className="w-16 rounded border border-gray-600 bg-gray-800 px-1 py-0.5 text-[10px] font-mono text-gray-200 focus:outline-none focus:ring-1 focus:ring-sky-500"
               />
@@ -163,8 +171,8 @@ export function CaptionEditor({ clipId, projectId }: CaptionEditorProps) {
               </button>
             </div>
             <textarea
-              defaultValue={seg.text}
-              onBlur={(e) => handleTextChange(i, e.target.value)}
+              value={seg.text}
+              onChange={(e) => handleTextChange(i, e.target.value)}
               rows={1}
               aria-label={`Caption ${i + 1} text`}
               className="w-full resize-none rounded border border-gray-600 bg-gray-800 px-2 py-1 text-[11px] text-gray-200 focus:outline-none focus:ring-1 focus:ring-sky-500"

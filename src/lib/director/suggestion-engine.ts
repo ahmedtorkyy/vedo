@@ -78,12 +78,14 @@ export function generateSuggestions(plan: EditPlan): Suggestion[] {
     })
   }
 
-  suggestions.push({
-    id: 'reduce-warnings',
-    label: 'Address plan warnings',
-    description: `${plan.warnings.length} warning${plan.warnings.length !== 1 ? 's' : ''} were generated. ${plan.warnings[0] ?? 'Review and resolve them.'}`,
-    selected: false,
-  })
+  if (plan.warnings.length > 0) {
+    suggestions.push({
+      id: 'reduce-warnings',
+      label: 'Address plan warnings',
+      description: `${plan.warnings.length} warning${plan.warnings.length !== 1 ? 's' : ''}: ${plan.warnings[0]}`,
+      selected: false,
+    })
+  }
 
   return suggestions.slice(0, 6)
 }
@@ -96,41 +98,41 @@ export function applySelectedSuggestions(
   const selected = suggestions.filter((s) => s.selected)
   const parts: string[] = [plan.instructions]
 
-  for (const s of selected) {
-    switch (s.id) {
-      case 'strengthen-zooms':
-        parts.push('aggressive zoom on key moments')
-        break
-      case 'more-trimming':
-        parts.push('aggressive silence removal')
-        break
-      case 'reduce-overlays':
-        parts.push('minimal overlays')
-        break
-      case 'adjust-overlay-timing':
-        parts.push('overlays during pauses only')
-        break
-      case 'review-low-confidence':
-        parts.push('emphasize high-confidence moments')
-        break
-      case 'review-reorder':
-        parts.push('maintain narrative flow')
-        break
-      case 'increase-pacing':
-        parts.push('faster pacing')
-        break
-      case 'reduce-warnings':
-        parts.push('resolve pacing and flow issues')
-        break
+  const phraseMap: Record<string, string> = {
+    'strengthen-zooms': 'aggressive zoom on key moments',
+    'more-trimming': 'aggressive silence removal',
+    'reduce-overlays': 'minimal overlays',
+    'adjust-overlay-timing': 'overlays during pauses only',
+    'review-low-confidence': 'emphasize high-confidence moments',
+    'review-reorder': 'maintain narrative flow',
+    'increase-pacing': 'faster pacing',
+    'reduce-warnings': 'resolve pacing and flow issues',
+  }
+
+  const seen = new Set<string>()
+  const deduped: string[] = []
+  for (const p of parts) {
+    const lower = p.toLowerCase().trim()
+    if (!seen.has(lower)) {
+      seen.add(lower)
+      deduped.push(p.trim())
     }
   }
 
-  if (feedbackText.trim()) {
-    parts.push(feedbackText.trim())
+  for (const s of selected) {
+    const phrase = phraseMap[s.id]
+    if (phrase && !seen.has(phrase)) {
+      seen.add(phrase)
+      deduped.push(phrase)
+    }
+  }
+
+  if (feedbackText.trim() && !seen.has(feedbackText.trim().toLowerCase())) {
+    deduped.push(feedbackText.trim())
   }
 
   return {
-    adjustedInstructions: parts.filter(Boolean).join('. ') + '.',
+    adjustedInstructions: deduped.filter(Boolean).join('. ') + '.',
     adjustedStyle: plan.style,
   }
 }

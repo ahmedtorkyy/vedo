@@ -1,19 +1,22 @@
-import { useState, useCallback, useMemo } from 'react'
+import { useState, useCallback, useMemo, useRef } from 'react'
 import { useClipStore } from '../../lib/state'
 import { useTranscriptionStore } from '../../lib/transcription'
+import { useTimelineStore } from '../../lib/timeline/timeline-store'
 import { useAriaAnnouncer } from '../accessibility/AriaAnnouncer'
+import type { Clip } from '../../types'
 
 interface TimelineEditorProps {
   projectId: string
 }
 
-interface EditEntry {
+interface EntryMeta {
   id: string
   label: string
   type: 'clip' | 'caption' | 'overlay'
   originalStart: number
   originalEnd: number
-  originalDuration: number
+  clipId?: string
+  captionIndex?: number
 }
 
 function fmt(t: number): string {
@@ -37,13 +40,16 @@ export function TimelineEditor({ projectId }: TimelineEditorProps) {
   const clipsA = useClipStore((s) => s.getSlotClips(projectId, 'A'))
   const clipsB = useClipStore((s) => s.getSlotClips(projectId, 'B'))
   const transcriptResults = useTranscriptionStore((s) => s.results)
+  const timelineEdits = useTimelineStore((s) => s.edits[projectId] ?? {})
+  const setEdit = useTimelineStore((s) => s.setEdit)
+  const removeEdit = useTimelineStore((s) => s.removeEdit)
+  const clearProjectEdits = useTimelineStore((s) => s.clearProjectEdits)
+  const updateSegment = useTranscriptionStore((s) => s.updateSegment)
   const { announce } = useAriaAnnouncer()
-
-  const [edits, setEdits] = useState<Record<string, { start: number; end: number }>>({})
-  const [dirtyItems, setDirtyItems] = useState<Set<string>>(new Set())
+  const [applyingId, setApplyingId] = useState<string | null>(null)
 
   const entries = useMemo(() => {
-    const result: EditEntry[] = []
+    const result: EntryMeta[] = []
     for (const clip of clipsA) {
       result.push({
         id: clip.id,
@@ -51,7 +57,7 @@ export function TimelineEditor({ projectId }: TimelineEditorProps) {
         type: 'clip',
         originalStart: 0,
         originalEnd: clip.duration,
-        originalDuration: clip.duration,
+        clipId: clip.id,
       })
     }
     for (const clip of clipsB) {
@@ -61,88 +67,123 @@ export function TimelineEditor({ projectId }: TimelineEditorProps) {
         type: 'overlay',
         originalStart: 0,
         originalEnd: clip.duration,
-        originalDuration: clip.duration,
+        clipId: clip.id,
       })
     }
-    for (const [clipId, result_] of Object.entries(transcriptResults)) {
-      if (result_.status !== 'done') continue
-      for (let i = 0; i < result_.segments.length; i++) {
-        const seg = result_.segments[i]
+    for (const [clipId, r] of Object.entries(transcriptResults)) {
+      if (r.status !== 'done') continue
+      for (let i = 0; i < r.segments.length; i++) {
+        const seg = r.segments[i]
         result.push({
           id: `caption-${clipId}-${i}`,
           label: `Caption: "${seg.text.slice(0, 40)}"`,
           type: 'caption',
           originalStart: seg.start,
           originalEnd: seg.end,
-          originalDuration: seg.end - seg.start,
+          clipId,
+          captionIndex: i,
         })
       }
     }
     return result
   }, [clipsA, clipsB, transcriptResults])
 
-  const getCurrent = useCallback((entry: EditEntry) => {
-    const e = edits[entry.id]
-    return e ? { start: e.start, end: e.end } : { start: entry.originalStart, end: entry.originalEnd }
-  }, [edits])
+  const getValue = useCallback((entry: EntryMeta) => {
+    const edit = timelineEdits[entry.id]
+    if (edit) return { start: edit.start, end: edit.end }
+    return { start: entry.originalStart, end: entry.originalEnd }
+  }, [timelineEdits])
 
   const handleStartChange = useCallback((entryId: string, value: string) => {
     const start = parseTime(value)
     if (isNaN(start)) return
-    setEdits((prev) => ({
-      ...prev,
-      [entryId]: { ...(prev[entryId] ?? { start: 0, end: 0 }), start },
-    }))
-    setDirtyItems((prev) => new Set(prev).add(entryId))
-  }, [])
+    const entry = entries.find((e) => e.id === entryId)
+    if (!entry) return
+    const current = getValue(entry)
+    setEdit(projectId, entryId, start, current.end)
+    announce(`${entry.label} start set to ${fmt(start)}`)
+  }, [projectId, entries, getValue, setEdit, announce])
 
   const handleEndChange = useCallback((entryId: string, value: string) => {
     const end = parseTime(value)
     if (isNaN(end)) return
-    setEdits((prev) => ({
-      ...prev,
-      [entryId]: { ...(prev[entryId] ?? { start: 0, end: 0 }), end },
-    }))
-    setDirtyItems((prev) => new Set(prev).add(entryId))
-  }, [])
+    const entry = entries.find((e) => e.id === entryId)
+    if (!entry) return
+    const current = getValue(entry)
+    setEdit(projectId, entryId, current.start, end)
+    announce(`${entry.label} end set to ${fmt(end)}`)
+  }, [projectId, entries, getValue, setEdit, announce])
 
-  const handleDurationChange = useCallback((entryId: string, entry: EditEntry, value: string) => {
+  const handleDurationChange = useCallback((entryId: string, value: string) => {
     const dur = parseTime(value)
     if (isNaN(dur) || dur <= 0) return
-    const current = getCurrent(entry)
-    setEdits((prev) => ({
-      ...prev,
-      [entryId]: { start: current.start, end: current.start + dur },
-    }))
-    setDirtyItems((prev) => new Set(prev).add(entryId))
-  }, [getCurrent])
+    const entry = entries.find((e) => e.id === entryId)
+    if (!entry) return
+    const current = getValue(entry)
+    setEdit(projectId, entryId, current.start, current.start + dur)
+    announce(`${entry.label} duration set to ${dur.toFixed(1)}s`)
+  }, [projectId, entries, getValue, setEdit, announce])
 
   const handlePreview = useCallback((time: number) => {
     useClipStore.getState().setPendingSeek(time)
     announce(`Preview at ${fmt(time)}`)
   }, [announce])
 
-  const handleReset = useCallback((entryId: string, entry: EditEntry) => {
-    setEdits((prev) => {
-      const next = { ...prev }
-      delete next[entryId]
-      return next
-    })
-    setDirtyItems((prev) => {
-      const next = new Set(prev)
-      next.delete(entryId)
-      return next
-    })
-    announce(`${entry.label} reset to original`)
-  }, [announce])
+  const handleReset = useCallback((entryId: string, entry: EntryMeta) => {
+    removeEdit(projectId, entryId)
+    announce(`${entry.label} reset`)
+  }, [projectId, removeEdit, announce])
+
+  const handleApplyItem = useCallback(async (entry: EntryMeta) => {
+    const edit = timelineEdits[entry.id]
+    if (!edit) return
+    setApplyingId(entry.id)
+    try {
+      if (entry.type === 'clip' && edit.start !== entry.originalStart) {
+        const { smartCutVideo } = await import('../../lib/ffmpeg')
+        const clip = clipsA.find((c) => c.id === entry.clipId)
+        if (clip) {
+          const segments = [{ start: entry.originalStart, end: edit.start }]
+          const outName = await smartCutVideo(projectId, clip.opfsFilename, segments, clip.duration)
+          const newClip: Clip = {
+            id: `trim-${clip.id}-${Date.now()}`,
+            fileName: `Trimmed: ${clip.fileName}`,
+            fileSize: clip.fileSize,
+            filePath: clip.filePath,
+            opfsFilename: outName,
+            duration: Math.max(0.1, edit.end - edit.start),
+            muted: clip.muted,
+          }
+          useClipStore.getState().addClip(projectId, 'A', newClip)
+        }
+      }
+      if (entry.type === 'caption' && entry.clipId && entry.captionIndex !== undefined) {
+        updateSegment(entry.clipId, entry.captionIndex, { start: edit.start, end: edit.end })
+      }
+      removeEdit(projectId, entry.id)
+      announce(`${entry.label} applied`)
+    } catch (err) {
+      announce(`Apply failed for ${entry.label}`, true)
+    } finally {
+      setApplyingId(null)
+    }
+  }, [projectId, timelineEdits, clipsA, updateSegment, removeEdit, announce])
+
+  const handleApplyAll = useCallback(async () => {
+    const dirty = entries.filter((e) => timelineEdits[e.id])
+    for (const entry of dirty) {
+      await handleApplyItem(entry)
+    }
+    announce(`${dirty.length} change${dirty.length !== 1 ? 's' : ''} applied`)
+  }, [entries, timelineEdits, handleApplyItem, announce])
 
   const handleResetAll = useCallback(() => {
-    setEdits({})
-    setDirtyItems(new Set())
+    clearProjectEdits(projectId)
     announce('All timeline edits reset')
-  }, [announce])
+  }, [projectId, clearProjectEdits, announce])
 
-  const dirtyCount = dirtyItems.size
+  const dirtyEntries = entries.filter((e) => timelineEdits[e.id])
+  const dirtyCount = dirtyEntries.length
 
   if (entries.length === 0) {
     return (
@@ -158,12 +199,23 @@ export function TimelineEditor({ projectId }: TimelineEditorProps) {
         <h2 className="text-sm font-semibold text-gray-300">Timeline Editor</h2>
         <div className="flex items-center gap-2">
           {dirtyCount > 0 && (
-            <span className="text-[10px] text-amber-400">{dirtyCount} unsaved change{dirtyCount > 1 ? 's' : ''}</span>
+            <>
+              <span className="text-[10px] text-amber-400">{dirtyCount} unsaved</span>
+              <button
+                type="button"
+                onClick={handleApplyAll}
+                className="rounded-md bg-emerald-700 px-2 py-1 text-[10px] text-white hover:bg-emerald-600 focus:outline-none focus:ring-2 focus:ring-emerald-500"
+                aria-label={`Apply all ${dirtyCount} changes`}
+              >
+                Apply All
+              </button>
+            </>
           )}
           <button
             type="button"
             onClick={handleResetAll}
-            className="rounded px-2 py-0.5 text-[10px] text-gray-400 hover:text-gray-200 focus:outline-none focus:ring-2 focus:ring-gray-500"
+            disabled={dirtyCount === 0}
+            className="rounded px-2 py-0.5 text-[10px] text-gray-400 hover:text-gray-200 disabled:opacity-30 focus:outline-none focus:ring-2 focus:ring-gray-500"
             aria-label="Reset all timeline edits"
           >
             Reset All
@@ -173,8 +225,8 @@ export function TimelineEditor({ projectId }: TimelineEditorProps) {
 
       <div className="space-y-1" role="list" aria-label="Timeline entries">
         {entries.map((entry) => {
-          const current = getCurrent(entry)
-          const isDirty = dirtyItems.has(entry.id)
+          const current = getValue(entry)
+          const isDirty = entry.id in timelineEdits
           const duration = current.end - current.start
           return (
             <div
@@ -196,24 +248,24 @@ export function TimelineEditor({ projectId }: TimelineEditorProps) {
                 <label className="text-[9px] text-gray-500">Start</label>
                 <input
                   type="text"
-                  defaultValue={fmt(current.start)}
-                  onBlur={(e) => handleStartChange(entry.id, e.target.value)}
+                  value={fmt(current.start)}
+                  onChange={(e) => handleStartChange(entry.id, e.target.value)}
                   aria-label={`${entry.label} start time`}
                   className="w-16 rounded border border-gray-600 bg-gray-800 px-1 py-0.5 text-[10px] font-mono text-gray-200 focus:outline-none focus:ring-1 focus:ring-sky-500"
                 />
                 <label className="text-[9px] text-gray-500">End</label>
                 <input
                   type="text"
-                  defaultValue={fmt(current.end)}
-                  onBlur={(e) => handleEndChange(entry.id, e.target.value)}
+                  value={fmt(current.end)}
+                  onChange={(e) => handleEndChange(entry.id, e.target.value)}
                   aria-label={`${entry.label} end time`}
                   className="w-16 rounded border border-gray-600 bg-gray-800 px-1 py-0.5 text-[10px] font-mono text-gray-200 focus:outline-none focus:ring-1 focus:ring-sky-500"
                 />
                 <label className="text-[9px] text-gray-500">Dur</label>
                 <input
                   type="text"
-                  defaultValue={duration.toFixed(1)}
-                  onBlur={(e) => handleDurationChange(entry.id, entry, e.target.value)}
+                  value={duration.toFixed(1)}
+                  onChange={(e) => handleDurationChange(entry.id, e.target.value)}
                   aria-label={`${entry.label} duration in seconds`}
                   className="w-14 rounded border border-gray-600 bg-gray-800 px-1 py-0.5 text-[10px] font-mono text-gray-200 focus:outline-none focus:ring-1 focus:ring-sky-500"
                 />
@@ -230,16 +282,26 @@ export function TimelineEditor({ projectId }: TimelineEditorProps) {
                     </svg>
                   </button>
                   {isDirty && (
-                    <button
-                      type="button"
-                      onClick={() => handleReset(entry.id, entry)}
-                      aria-label={`Reset ${entry.label}`}
-                      className="rounded p-0.5 text-gray-500 hover:text-amber-400 focus:outline-none focus:ring-1 focus:ring-gray-500"
-                    >
-                      <svg className="h-3 w-3" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true">
-                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
-                      </svg>
-                    </button>
+                    <>
+                      <button
+                        type="button"
+                        onClick={() => handleApplyItem(entry)}
+                        disabled={applyingId === entry.id}
+                        className="rounded px-1 py-0.5 text-[10px] text-emerald-400 hover:bg-emerald-900/30 disabled:opacity-40 focus:outline-none focus:ring-1 focus:ring-emerald-500"
+                      >
+                        {applyingId === entry.id ? '...' : 'Apply'}
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => handleReset(entry.id, entry)}
+                        aria-label={`Reset ${entry.label}`}
+                        className="rounded p-0.5 text-gray-500 hover:text-amber-400 focus:outline-none focus:ring-1 focus:ring-gray-500"
+                      >
+                        <svg className="h-3 w-3" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
+                        </svg>
+                      </button>
+                    </>
                   )}
                 </div>
               </div>

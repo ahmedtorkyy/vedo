@@ -10,6 +10,7 @@ import { EditingPanel } from './components/editing'
 import { DirectorPanel } from './components/director'
 import { ExportPanel } from './components/export/ExportPanel'
 import { TimelineEditor } from './components/timeline/TimelineEditor'
+import { useTimelineStore } from './lib/timeline/timeline-store'
 import { AriaAnnouncerProvider, useAriaAnnouncer } from './components/accessibility/AriaAnnouncer'
 import { AudioOrchestrator } from './lib/audio'
 import { saveSessionSnapshot, restoreSession } from './lib/session/session-recovery'
@@ -27,6 +28,7 @@ function Workspace({ onConcatNeeded }: { onConcatNeeded?: (projectId: string) =>
   const [pendingTab, setPendingTab] = useState<WorkspaceTab | null>(null)
   const prevConcatRef = useRef(concatJob.status)
   const tabRefs = useRef<Record<string, HTMLButtonElement | null>>({})
+  const dialogRef = useRef<HTMLDivElement | null>(null)
 
   useEffect(() => {
     const prev = prevConcatRef.current
@@ -52,6 +54,40 @@ function Workspace({ onConcatNeeded }: { onConcatNeeded?: (projectId: string) =>
     const id = useProjectStore.getState().currentProjectId
     if (id) onConcatNeeded?.(id)
   }, [onConcatNeeded])
+
+  useEffect(() => {
+    if (pendingTab && dialogRef.current) {
+      const heading = dialogRef.current.querySelector('h3') as HTMLHeadingElement | null
+      heading?.focus()
+    }
+  }, [pendingTab])
+
+  useEffect(() => {
+    if (!pendingTab) return
+    const handler = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') {
+        setPendingTab(null)
+        announce('Cancelled, staying on timeline')
+      }
+      if (e.key === 'Tab' && dialogRef.current) {
+        const focusable = dialogRef.current.querySelectorAll<HTMLElement>(
+          'button, [href], input, select, textarea, [tabindex]:not([tabindex="-1"])'
+        )
+        if (focusable.length === 0) return
+        const first = focusable[0]
+        const last = focusable[focusable.length - 1]
+        if (e.shiftKey && document.activeElement === first) {
+          e.preventDefault()
+          last.focus()
+        } else if (!e.shiftKey && document.activeElement === last) {
+          e.preventDefault()
+          first.focus()
+        }
+      }
+    }
+    document.addEventListener('keydown', handler)
+    return () => document.removeEventListener('keydown', handler)
+  }, [pendingTab, announce])
 
   useKeyboardShortcuts(currentProjectId, {
     Escape: () => {},
@@ -112,7 +148,7 @@ function Workspace({ onConcatNeeded }: { onConcatNeeded?: (projectId: string) =>
               next = tabs[(idx - 1 + tabs.length) % tabs.length].key
             }
             if (next) {
-              if (activeTab === 'timeline' && next === 'director') {
+              if (activeTab === 'timeline' && next !== 'timeline' && useTimelineStore.getState().hasDirty(currentProjectId)) {
                 setPendingTab(next)
                 return
               }
@@ -131,7 +167,7 @@ function Workspace({ onConcatNeeded }: { onConcatNeeded?: (projectId: string) =>
               tabIndex={activeTab === tab.key ? 0 : -1}
               aria-controls={`panel-${tab.key}`}
               onClick={() => {
-                if (activeTab === 'timeline' && tab.key === 'director') {
+                if (activeTab === 'timeline' && tab.key !== 'timeline' && useTimelineStore.getState().hasDirty(currentProjectId)) {
                   setPendingTab(tab.key)
                   return
                 }
@@ -196,13 +232,14 @@ function Workspace({ onConcatNeeded }: { onConcatNeeded?: (projectId: string) =>
 
       {pendingTab && (
         <div
+          ref={dialogRef}
           className="fixed inset-0 z-50 flex items-center justify-center bg-black/60"
           role="dialog"
           aria-modal="true"
           aria-label="Confirm navigation"
         >
           <div className="mx-4 w-full max-w-sm rounded-lg bg-gray-800 p-4 shadow-xl">
-            <h3 className="text-sm font-semibold text-gray-200">Discard timeline changes?</h3>
+            <h3 className="text-sm font-semibold text-gray-200" tabIndex={-1}>Discard timeline changes?</h3>
             <p className="mt-1 text-xs text-gray-400">
               Returning to the Director will discard any unsaved timeline adjustments. Are you sure?
             </p>
