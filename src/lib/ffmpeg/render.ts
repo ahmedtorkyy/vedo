@@ -1,7 +1,10 @@
 import type { EditDecision } from '../director/types'
 import { useDirectorStore } from '../director/director-store'
 import { useClipStore } from '../state/clip-store'
+import { useTranscriptionStore } from '../transcription/transcription-store'
 import { smartCutVideo } from './concat'
+import { buildCodecParams, buildScaleParams, buildDrawtextFilters, mapSegmentsThroughTrims } from '../export'
+import type { ExportOptions, ExportScaleParams } from '../export'
 
 let worker: Worker | null = null
 let pendingRender: { resolve: (name: string) => void; reject: (err: Error) => void } | null = null
@@ -98,15 +101,19 @@ function buildZoomFilters(zoomDecisions: EditDecision[]): string[] {
   return filters
 }
 
-function buildFilterComplex(
+export function buildFilterComplex(
   zoomDecisions: EditDecision[],
   overlayDecisions: EditDecision[],
   isMuted: boolean,
+  captionDrawtextFilters?: string[],
+  exportScale?: ExportScaleParams,
 ): { filterComplex: string | null; overlayClipNames: string[] } {
   const hasZoom = zoomDecisions.length > 0
   const hasOverlay = overlayDecisions.length > 0
+  const hasCaptions = captionDrawtextFilters && captionDrawtextFilters.length > 0
+  const hasScale = !!exportScale
 
-  if (!hasZoom && !hasOverlay && !isMuted) return { filterComplex: null, overlayClipNames: [] }
+  if (!hasZoom && !hasOverlay && !isMuted && !hasCaptions && !hasScale) return { filterComplex: null, overlayClipNames: [] }
 
   const seenClips = new Set<string>()
   const overlayClipNames: string[] = []
@@ -125,10 +132,19 @@ function buildFilterComplex(
 
   mainVideoFilters.push('fps=30', 'scale=trunc(iw/2)*2:trunc(ih/2)*2')
 
+  if (hasScale) {
+    mainVideoFilters.push(exportScale.scaleFilter)
+    if (exportScale.cropFilter) mainVideoFilters.push(exportScale.cropFilter)
+    if (exportScale.padFilter) mainVideoFilters.push(exportScale.padFilter)
+  }
+
+  if (hasCaptions) {
+    mainVideoFilters.push(...captionDrawtextFilters!)
+  }
+
   if (hasOverlay) {
     let fc = `[0:v]${mainVideoFilters.join(',')}[vbase];`
 
-    // Group by clipIdx and count usages to add split when reused
     const overlayGroups: Map<number, { clipIdx: number; ods: EditDecision[] }> = new Map()
     let clipIdx = 1
     const seen = new Map<string, number>()
@@ -182,7 +198,6 @@ function buildFilterComplex(
       }
     }
 
-    // Chain overlays: [vbase][o1]overlay...[vtmp1];[vtmp1][o2]overlay...
     let prevLabel = 'vbase'
     for (let i = 0; i < overlayOps.length; i++) {
       const nextLabel = i < overlayOps.length - 1 ? `vtmp${i}` : 'v'
@@ -250,7 +265,7 @@ async function deleteOpfsFile(projectId: string, filename: string): Promise<void
   }
 }
 
-export async function exportVideo(projectId: string): Promise<string> {
+export async function exportVideo(projectId: string, options: ExportOptions): Promise<string> {
   const directorState = useDirectorStore.getState().state[projectId]
   if (!directorState?.plan) throw new Error('No edit plan available.')
 
@@ -258,6 +273,9 @@ export async function exportVideo(projectId: string): Promise<string> {
   const clipsA = useClipStore.getState().getSlotClips(projectId, 'A')
   const clipsB = useClipStore.getState().getSlotClips(projectId, 'B')
   if (clipsA.length === 0) throw new Error('No clips to render.')
+
+  const codec = buildCodecParams(options)
+  const exportScale = buildScaleParams(options, 1920, 1080)
 
   sendProgress('preparing', 0, 'Preparing render pipeline')
 
@@ -281,12 +299,34 @@ export async function exportVideo(projectId: string): Promise<string> {
       tempFiles.push(currentName)
     }
 
-    if (zoomDecisions.length > 0 || overlayDecisions.length > 0 || clip.muted) {
+    const needsRender = zoomDecisions.length > 0 || overlayDecisions.length > 0 || clip.muted || options.burnCaptions || options.quality !== '1080p' || options.platform !== 'none'
+
+    if (needsRender) {
+      let captionFilters: string[] | undefined
+      if (options.burnCaptions) {
+        const transcriptResult = useTranscriptionStore.getState().results[clip.id]
+        if (transcriptResult?.status === 'done' && transcriptResult.segments.length > 0) {
+          const trimSegments = trimDecisions.map((d) => ({ start: d.startTime, end: d.endTime }))
+          const mappedSegments = mapSegmentsThroughTrims(
+            transcriptResult.segments,
+            0,
+            trimSegments,
+            clip.duration,
+          )
+          if (mappedSegments.length > 0) {
+            captionFilters = buildDrawtextFilters(mappedSegments, exportScale.width, exportScale.height)
+          }
+        }
+      }
+
       sendProgress('processing', ((i + 0.5) / clipsA.length) * 60, `Applying effects to clip ${i + 1}`)
-      const { filterComplex, overlayClipNames } = buildFilterComplex(zoomDecisions, overlayDecisions, clip.muted)
+      const { filterComplex, overlayClipNames } = buildFilterComplex(
+        zoomDecisions, overlayDecisions, clip.muted,
+        captionFilters, exportScale,
+      )
 
       if (filterComplex) {
-        const outName = `_rendered_${clip.id}_${Date.now()}.mp4`
+        const outName = `_rendered_${clip.id}_${Date.now()}.${codec.extension}`
 
         const overlayInputNames = overlayClipNames
           .map((cid) => clipsB.find((b) => b.id === cid)?.opfsFilename)
@@ -300,6 +340,7 @@ export async function exportVideo(projectId: string): Promise<string> {
             outputName: outName,
             filterComplex,
             overlayInputNames,
+            codec,
           },
         })
 
@@ -318,19 +359,41 @@ export async function exportVideo(projectId: string): Promise<string> {
   if (processedNames.length > 1) {
     sendProgress('concatenating', 85, 'Concatenating clips')
 
-    const outName = `_final_${Date.now()}.mp4`
-    const clips = processedNames.map((name) => ({ name }))
+    const outName = `_final_${Date.now()}.${codec.extension}`
+    const clips = processedNames.map((name) => ({ name, duration: 0 }))
 
     getWorker().postMessage({
       type: 'render-concat',
-      payload: { projectId, clips, outputName: outName },
+      payload: {
+        projectId,
+        clips,
+        outputName: outName,
+        codec,
+      },
     })
 
     finalName = await new Promise<string>((resolve, reject) => {
       pendingConcat = { resolve, reject }
     })
   } else {
-    finalName = processedNames[0]
+    if (processedNames[0].endsWith(codec.extension)) {
+      finalName = processedNames[0]
+    } else {
+      // Re-wrap single clip into target format if needed
+      const outName = `_final_${Date.now()}.${codec.extension}`
+      getWorker().postMessage({
+        type: 'render-concat',
+        payload: {
+          projectId,
+          clips: [{ name: processedNames[0], duration: 0 }],
+          outputName: outName,
+          codec,
+        },
+      })
+      finalName = await new Promise<string>((resolve, reject) => {
+        pendingConcat = { resolve, reject }
+      })
+    }
   }
 
   cleanupRenderFiles(projectId, tempFiles.filter((f) => f !== finalName))

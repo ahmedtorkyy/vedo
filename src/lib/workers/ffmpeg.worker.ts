@@ -249,9 +249,10 @@ self.onmessage = async (e: MessageEvent) => {
   if (type === 'render-clip') {
     try {
       const instance = await getFFmpeg()
-      const { projectId, inputName, outputName, filterComplex, overlayInputNames } = payload as {
+      const { projectId, inputName, outputName, filterComplex, overlayInputNames, codec } = payload as {
         projectId: string; inputName: string; outputName: string; filterComplex: string
         overlayInputNames?: string[]
+        codec?: { videoCodec: string; audioCodec: string; videoParams: string[]; audioParams: string[]; muxer: string }
       }
 
       instance.on('progress', ({ progress }) => {
@@ -276,14 +277,18 @@ self.onmessage = async (e: MessageEvent) => {
         '-filter_complex', filterComplex,
         '-map', '[v]',
         '-map', '[a]',
-        '-c:v', 'libx264',
-        '-preset', 'fast',
-        '-crf', '23',
-        '-c:a', 'aac',
-        '-b:a', '128k',
-        '-f', 'mp4',
-        outputName,
       )
+
+      if (codec) {
+        args.push('-c:v', codec.videoCodec, ...codec.videoParams)
+        args.push('-c:a', codec.audioCodec, ...codec.audioParams)
+        args.push('-f', codec.muxer)
+      } else {
+        args.push('-c:v', 'libx264', '-preset', 'fast', '-crf', '23')
+        args.push('-c:a', 'aac', '-b:a', '128k')
+        args.push('-f', 'mp4')
+      }
+      args.push(outputName)
 
       await instance.exec(args)
 
@@ -309,10 +314,11 @@ self.onmessage = async (e: MessageEvent) => {
   if (type === 'render-concat') {
     try {
       const instance = await getFFmpeg()
-      const { projectId, clips, outputName } = payload as {
+      const { projectId, clips, outputName, codec } = payload as {
         projectId: string
         clips: { name: string; duration: number }[]
         outputName: string
+        codec?: { videoCodec: string; audioCodec: string; videoParams: string[]; audioParams: string[]; muxer: string }
       }
 
       let totalBytes = 0
@@ -340,12 +346,20 @@ self.onmessage = async (e: MessageEvent) => {
 
       const concatInput = clips.map((c) => `file '${c.name}'`).join('\n')
       await instance.writeFile('concat.txt', new TextEncoder().encode(concatInput))
-      await instance.exec([
-        '-f', 'concat', '-safe', '0', '-i', 'concat.txt',
-        '-c:v', 'libx264', '-preset', 'fast', '-crf', '23',
-        '-c:a', 'aac', '-b:a', '128k',
-        outputName,
-      ])
+
+      const args = ['-f', 'concat', '-safe', '0', '-i', 'concat.txt']
+
+      if (codec) {
+        args.push('-c:v', codec.videoCodec, ...codec.videoParams)
+        args.push('-c:a', codec.audioCodec, ...codec.audioParams)
+        args.push('-f', codec.muxer)
+      } else {
+        args.push('-c:v', 'libx264', '-preset', 'fast', '-crf', '23')
+        args.push('-c:a', 'aac', '-b:a', '128k')
+      }
+      args.push(outputName)
+
+      await instance.exec(args)
 
       const result = await instance.readFile(outputName) as Uint8Array
       const copy = new Uint8Array(result.byteLength)
