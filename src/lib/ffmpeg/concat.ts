@@ -4,14 +4,15 @@ import type { Clip, AudioCleansingOptions } from '../../types'
 let worker: Worker | null = null
 let isRunning = false
 
-type PendingOp = {
-  resolve: (outputFilename: string) => void
+type PendingOp<T = string> = {
+  resolve: (value: T) => void
   reject: (err: Error) => void
 }
 
 let pendingConcat: PendingOp | null = null
 let pendingAudio: PendingOp | null = null
 let pendingSmartCut: PendingOp | null = null
+let pendingLoad: PendingOp<void> | null = null
 
 function getWorker(): Worker {
   if (!worker) {
@@ -36,6 +37,8 @@ function handleWorkerMessage(e: MessageEvent) {
 
   if (type === 'ffmpeg-loaded') {
     useClipStore.getState().setConcatStatus('idle')
+    pendingLoad?.resolve()
+    pendingLoad = null
     return
   }
 
@@ -63,6 +66,8 @@ function handleWorkerMessage(e: MessageEvent) {
 
   if (type === 'load-error') {
     useClipStore.getState().setConcatStatus('error')
+    pendingLoad?.reject(new Error(e.data.error ?? 'Failed to load FFmpeg'))
+    pendingLoad = null
     isRunning = false
     return
   }
@@ -121,6 +126,9 @@ export async function cleanAudio(
 export async function loadFFmpeg(): Promise<void> {
   useClipStore.getState().setConcatStatus('loading-ffmpeg')
   getWorker().postMessage({ type: 'load' })
+  return new Promise<void>((resolve, reject) => {
+    pendingLoad = { resolve, reject }
+  })
 }
 
 export async function concatClips(

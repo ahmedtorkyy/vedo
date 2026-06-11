@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState } from 'react'
+import { useCallback, useEffect, useRef, useMemo, useState } from 'react'
 import { useClipStore } from '../../lib/state'
 import { useDirectorStore } from '../../lib/director/director-store'
 import { useRender } from '../../hooks/useRender'
@@ -41,7 +41,8 @@ export function ExportPanel({ projectId }: ExportPanelProps) {
   const [platform, setPlatform] = useState<PlatformPreset>('none')
   const [burnCaptions, setBurnCaptions] = useState(false)
 
-  const clipsA = useClipStore((s) => s.clips[projectId]?.A ?? [])
+  const projectClips = useClipStore((s) => s.clips[projectId])
+  const clipsA = useMemo(() => projectClips?.A ?? [], [projectClips])
   const hasPlan = !!useDirectorStore((s) => s.state[projectId]?.plan)
   const canExport = clipsA.length > 0 && hasPlan && !isBusy
 

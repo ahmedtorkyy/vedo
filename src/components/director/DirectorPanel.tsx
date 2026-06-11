@@ -17,8 +17,9 @@ export function DirectorPanel({ projectId }: DirectorPanelProps) {
   } = useDirector(projectId)
   const { announce } = useAriaAnnouncer()
 
-  const clipsA = useClipStore((s) => s.clips[projectId]?.A ?? [])
-  const clipsB = useClipStore((s) => s.clips[projectId]?.B ?? [])
+  const projectClips = useClipStore((s) => s.clips[projectId])
+  const clipsA = useMemo(() => projectClips?.A ?? [], [projectClips])
+  const clipsB = useMemo(() => projectClips?.B ?? [], [projectClips])
 
   const isBusy = status === 'analyzing' || status === 'planning' || status === 'executing'
 

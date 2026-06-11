@@ -2,6 +2,8 @@ import { create } from 'zustand';
 import { persist } from 'zustand/middleware';
 import type { Clip, UploadProgressEntry } from '../../types';
 
+const EMPTY_CLIPS: readonly Clip[] = []
+
 interface ClipState {
   clips: Record<string, { A: Clip[]; B: Clip[] }>;
   uploads: Record<string, UploadProgressEntry>;
@@ -35,8 +37,8 @@ export const useClipStore = create<ClipState>()(
 
       getSlotClips: (projectId, slot) => {
         const projectClips = get().clips[projectId];
-        if (!projectClips) return [];
-        return projectClips[slot] || [];
+        if (!projectClips) return EMPTY_CLIPS as Clip[];
+        return projectClips[slot] || (EMPTY_CLIPS as Clip[]);
       },
 
       getClipById: (projectId, slot, clipId) => {

@@ -1,14 +1,9 @@
-import { useEffect, useCallback } from 'react'
-import { loadFFmpeg, concatClips, terminateWorker } from '../lib/ffmpeg'
+import { useCallback } from 'react'
+import { loadFFmpeg, concatClips } from '../lib/ffmpeg'
 import { useClipStore } from '../lib/state'
 
 export function useFFmpeg() {
   const concatJob = useClipStore((s) => s.concatJob)
-
-  useEffect(() => {
-    loadFFmpeg()
-    return () => { terminateWorker() }
-  }, [])
 
   const runConcat = useCallback(async (projectId: string) => {
     const store = useClipStore.getState()
@@ -19,6 +14,7 @@ export function useFFmpeg() {
     }
 
     try {
+      await loadFFmpeg()
       await concatClips(projectId, clips)
       store.setConcatStatus('done')
     } catch {

@@ -6,8 +6,7 @@ import { useDirectorStore, analyzeContent, detectHooks, analyzeRetention, create
 import type { StyleKey, PlannerInput } from '../lib/director'
 
 export function useDirector(projectId: string) {
-  const directorStore = useDirectorStore()
-  const projectState = directorStore.state[projectId]
+  const projectState = useDirectorStore((s) => s.state[projectId])
   const instructions = projectState?.instructions ?? ''
   const selectedStyle = projectState?.selectedStyle ?? 'professional'
   const status = projectState?.status ?? 'idle'
@@ -15,7 +14,8 @@ export function useDirector(projectId: string) {
   const error = projectState?.error
 
   const generatePlan = useCallback(async () => {
-    directorStore.setStatus(projectId, 'analyzing')
+    const store = useDirectorStore.getState()
+    store.setStatus(projectId, 'analyzing')
 
     try {
       const clipStore = useClipStore.getState()
@@ -28,7 +28,7 @@ export function useDirector(projectId: string) {
       ]
 
       if (clipsA.length === 0) {
-        directorStore.setError(projectId, 'No clips in Slot A. Upload videos first.')
+        store.setError(projectId, 'No clips in Slot A. Upload videos first.')
         return
       }
 
@@ -77,7 +77,7 @@ export function useDirector(projectId: string) {
       const currentInstructions = useDirectorStore.getState().state[projectId]?.instructions ?? ''
       const currentStyle = useDirectorStore.getState().state[projectId]?.selectedStyle ?? 'professional'
 
-      directorStore.setStatus(projectId, 'planning')
+      store.setStatus(projectId, 'planning')
 
       const contentAnalysis = analyzeContent(
         combinedSegments,
@@ -112,21 +112,21 @@ export function useDirector(projectId: string) {
       }
 
       const editPlan = createEditPlan(input)
-      directorStore.setPlan(projectId, editPlan)
+      store.setPlan(projectId, editPlan)
     } catch (err) {
-      directorStore.setError(projectId, err instanceof Error ? err.message : 'Planning failed')
+      useDirectorStore.getState().setError(projectId, err instanceof Error ? err.message : 'Planning failed')
     }
-  }, [projectId, directorStore])
+  }, [projectId])
 
   const executePlan = useCallback(async () => {
-    directorStore.setStatus(projectId, 'executing')
+    useDirectorStore.getState().setStatus(projectId, 'executing')
     try {
       await new Promise((resolve) => setTimeout(resolve, 500))
-      directorStore.setStatus(projectId, 'done')
+      useDirectorStore.getState().setStatus(projectId, 'done')
     } catch (err) {
-      directorStore.setError(projectId, err instanceof Error ? err.message : 'Execution failed')
+      useDirectorStore.getState().setError(projectId, err instanceof Error ? err.message : 'Execution failed')
     }
-  }, [projectId, directorStore])
+  }, [projectId])
 
   return {
     instructions,
@@ -134,8 +134,8 @@ export function useDirector(projectId: string) {
     status,
     plan,
     error,
-    setInstructions: (text: string) => directorStore.setInstructions(projectId, text),
-    setStyle: (style: StyleKey) => directorStore.setStyle(projectId, style),
+    setInstructions: (text: string) => useDirectorStore.getState().setInstructions(projectId, text),
+    setStyle: (style: StyleKey) => useDirectorStore.getState().setStyle(projectId, style),
     generatePlan,
     executePlan,
   }
