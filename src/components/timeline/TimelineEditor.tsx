@@ -4,6 +4,7 @@ import { useTranscriptionStore } from '../../lib/transcription'
 import { useTimelineStore } from '../../lib/timeline/timeline-store'
 import { useAriaAnnouncer } from '../accessibility/AriaAnnouncer'
 import { computeStitchedOffset } from '../../lib/timeline/compute-offset'
+import { useDirectorStore } from '../../lib/director'
 import type { Clip } from '../../types'
 
 interface TimelineEditorProps {
@@ -19,6 +20,7 @@ interface EntryMeta {
   originalEnd: number
   clipId?: string
   captionIndex?: number
+  overlayDecisionIndex?: number
 }
 
 function fmt(t: number): string {
@@ -65,15 +67,42 @@ export function TimelineEditor({ projectId, onConcatNeeded }: TimelineEditorProp
         clipId: clip.id,
       })
     }
+    const planState = useDirectorStore.getState().state[projectId]?.plan
     for (const clip of clipsB) {
-      result.push({
-        id: `overlay-${clip.id}`,
-        label: `Overlay: ${clip.fileName}`,
-        type: 'overlay',
-        originalStart: 0,
-        originalEnd: clip.duration,
-        clipId: clip.id,
-      })
+      const overlayEntries: { startTime: number; endTime: number; overlayIdx: number }[] = []
+      if (planState) {
+        let overlayIdx = 0
+        for (const d of planState.decisions) {
+          if (d.type === 'overlay' && d.overlayClipId === clip.id) {
+            overlayEntries.push({ startTime: d.startTime, endTime: d.endTime, overlayIdx })
+            overlayIdx++
+          } else if (d.type === 'overlay') {
+            overlayIdx++
+          }
+        }
+      }
+      if (overlayEntries.length > 0) {
+        for (const { startTime, endTime, overlayIdx } of overlayEntries) {
+          result.push({
+            id: `overlay-${clip.id}-${overlayIdx}`,
+            label: `Overlay: ${clip.fileName}`,
+            type: 'overlay',
+            originalStart: startTime,
+            originalEnd: endTime,
+            clipId: clip.id,
+            overlayDecisionIndex: overlayIdx,
+          })
+        }
+      } else {
+        result.push({
+          id: `overlay-${clip.id}`,
+          label: `Overlay: ${clip.fileName}`,
+          type: 'overlay',
+          originalStart: 0,
+          originalEnd: clip.duration,
+          clipId: clip.id,
+        })
+      }
     }
     for (const [clipId, r] of Object.entries(transcriptResults)) {
       if (r.status !== 'done') continue
@@ -91,7 +120,7 @@ export function TimelineEditor({ projectId, onConcatNeeded }: TimelineEditorProp
       }
     }
     return result
-  }, [clipsA, clipsB, transcriptResults])
+  }, [clipsA, clipsB, transcriptResults, projectId])
 
   const getValue = useCallback((entry: EntryMeta) => {
     const edit = timelineEdits[entry.id]
@@ -159,14 +188,14 @@ export function TimelineEditor({ projectId, onConcatNeeded }: TimelineEditorProp
     announce(`${entry.label} duration set to ${dur.toFixed(1)}s`)
   }, [draftDur, entries, getValue, projectId, setEdit, announce])
 
-  const handleInputKeyDown = useCallback((entryId: string, commit: () => void, e: React.KeyboardEvent) => {
+  const handleInputKeyDown = useCallback((_entryId: string, commit: () => void, e: React.KeyboardEvent) => {
     if (e.key === 'Enter') {
       commit()
     }
   }, [])
 
   const handlePreview = useCallback((entry: EntryMeta, time: number) => {
-    const offset = entry.type === 'clip' && entry.clipId
+    const offset = entry.clipId
       ? computeStitchedOffset(projectId, entry.clipId)
       : 0
     useClipStore.getState().setPendingSeek(offset + time)
@@ -230,8 +259,9 @@ export function TimelineEditor({ projectId, onConcatNeeded }: TimelineEditorProp
           }
           store.insertClipAt(projectId, 'B', idx, updated)
         }
-        const { useDirectorStore } = await import('../../lib/director')
-        useDirectorStore.getState().updateOverlayDecision(projectId, entry.clipId, edit.start, edit.end)
+        if (entry.overlayDecisionIndex !== undefined) {
+          useDirectorStore.getState().updateOverlayDecision(projectId, entry.overlayDecisionIndex, edit.start, edit.end)
+        }
       }
       removeEdit(projectId, entry.id)
       onConcatNeeded?.()

@@ -1,6 +1,6 @@
 import { create } from 'zustand'
 import { persist } from 'zustand/middleware'
-import type { DirectorState, StyleKey, EditPlan, Suggestion, OverlayDecision } from './types'
+import type { DirectorState, StyleKey, EditPlan, Suggestion } from './types'
 
 interface DirectorStore {
   state: Record<string, DirectorState>
@@ -12,7 +12,7 @@ interface DirectorStore {
   setFeedbackText: (projectId: string, text: string) => void
   toggleSuggestion: (projectId: string, suggestionId: string) => void
   setError: (projectId: string, error: string) => void
-  updateOverlayDecision: (projectId: string, overlayClipId: string, startTime: number, endTime: number) => void
+  updateOverlayDecision: (projectId: string, decisionIndex: number, startTime: number, endTime: number) => void
   clearProject: (projectId: string) => void
   clearAll: () => void
 }
@@ -106,10 +106,15 @@ export const useDirectorStore = create<DirectorStore>()(
           },
         })),
 
-      updateOverlayDecision: (projectId, overlayClipId, startTime, endTime) =>
+      updateOverlayDecision: (projectId, decisionIndex, startTime, endTime) =>
         set((s) => {
           const existing = s.state[projectId]
           if (!existing?.plan) return {}
+          const overlayIndices = existing.plan.decisions
+            .map((d, i) => (d.type === 'overlay' ? i : -1))
+            .filter((i) => i !== -1)
+          const idx = overlayIndices[decisionIndex]
+          if (idx === undefined) return {}
           return {
             state: {
               ...s.state,
@@ -117,10 +122,8 @@ export const useDirectorStore = create<DirectorStore>()(
                 ...existing,
                 plan: {
                   ...existing.plan,
-                  decisions: existing.plan.decisions.map((d) =>
-                    d.type === 'overlay' && (d as OverlayDecision).overlayClipId === overlayClipId
-                      ? { ...d, startTime, endTime }
-                      : d
+                  decisions: existing.plan.decisions.map((d, i) =>
+                    i === idx ? { ...d, startTime, endTime } : d
                   ),
                 },
               },
