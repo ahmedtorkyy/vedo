@@ -4,3 +4,7 @@ compatibility_date = "2025-01-01"
 
 [pages]
 build_command = "pnpm build"
+
+[[r2_buckets]]
+binding = "MODELS"
+bucket_name = "vedo-models"

@@ -1,8 +1,7 @@
 import { FaceDetector, ObjectDetector, FilesetResolver } from '@mediapipe/tasks-vision'
 import type { VideoFrame, VisualAnalysis, VisionWorkerMessage, VisionWorkerResponse } from '../vision/vision-types'
 import { extractMotionScore } from '../vision/frame-sampler'
-
-const MODEL_CDN = 'https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@0.10.35/wasm'
+import { wasmBaseUrl, faceDetectorModelPath, objectDetectorModelPath } from '../vision/model-paths'
 
 let faceDetector: FaceDetector | null = null
 let objectDetector: ObjectDetector | null = null
@@ -25,21 +24,44 @@ self.onmessage = async (e: MessageEvent<VisionWorkerMessage>) => {
 
 async function handleLoad() {
   try {
-    const vision = await FilesetResolver.forVisionTasks(MODEL_CDN)
+    const vision = await FilesetResolver.forVisionTasks(wasmBaseUrl())
 
     faceDetector = await FaceDetector.createFromOptions(vision, {
+      baseOptions: { modelAssetPath: faceDetectorModelPath(), delegate: 'GPU' },
       runningMode: 'IMAGE',
       minDetectionConfidence: 0.5,
     })
+  } catch {
+    try {
+      const vision = await FilesetResolver.forVisionTasks(wasmBaseUrl())
+      faceDetector = await FaceDetector.createFromOptions(vision, {
+        baseOptions: { modelAssetPath: faceDetectorModelPath(), delegate: 'CPU' },
+        runningMode: 'IMAGE',
+        minDetectionConfidence: 0.5,
+      })
+    } catch { }
+  }
 
+  try {
+    const vision = await FilesetResolver.forVisionTasks(wasmBaseUrl())
     objectDetector = await ObjectDetector.createFromOptions(vision, {
+      baseOptions: { modelAssetPath: objectDetectorModelPath(), delegate: 'GPU' },
       runningMode: 'IMAGE',
     })
-
-    postMessage({ type: 'model-loaded', payload: { models: ['face', 'object'] } } satisfies VisionWorkerResponse)
-  } catch (err) {
-    postMessage({ type: 'load-error', payload: { error: String(err) } } satisfies VisionWorkerResponse)
+  } catch {
+    try {
+      const vision = await FilesetResolver.forVisionTasks(wasmBaseUrl())
+      objectDetector = await ObjectDetector.createFromOptions(vision, {
+        baseOptions: { modelAssetPath: objectDetectorModelPath(), delegate: 'CPU' },
+        runningMode: 'IMAGE',
+      })
+    } catch { }
   }
+
+  const loaded: string[] = []
+  if (faceDetector) loaded.push('face')
+  if (objectDetector) loaded.push('object')
+  postMessage({ type: 'model-loaded', payload: { models: loaded } } satisfies VisionWorkerResponse)
 }
 
 function handleUnload() {

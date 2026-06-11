@@ -5,6 +5,7 @@ import {
   type Detection,
 } from '@mediapipe/tasks-vision'
 import type { VideoFrame, VisionCapability, FaceDetectionEvent, ObjectDetectionEvent } from './vision-types'
+import { wasmBaseUrl, faceDetectorModelPath, objectDetectorModelPath } from './model-paths'
 
 const FOOD_LABELS = new Set([
   'apple', 'banana', 'orange', 'sandwich', 'pizza', 'donut', 'cake',
@@ -45,23 +46,38 @@ export async function createDetectors(): Promise<DetectorSet> {
   const detectors: DetectorSet = {}
 
   try {
-    const vision = await FilesetResolver.forVisionTasks(
-      'https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@0.10.35/wasm',
-    )
+    const vision = await FilesetResolver.forVisionTasks(wasmBaseUrl())
     detectors.faceDetector = await FaceDetector.createFromOptions(vision, {
+      baseOptions: { modelAssetPath: faceDetectorModelPath(), delegate: 'GPU' },
       runningMode: 'IMAGE',
       minDetectionConfidence: 0.5,
     })
-  } catch { }
+  } catch {
+    try {
+      const vision = await FilesetResolver.forVisionTasks(wasmBaseUrl())
+      detectors.faceDetector = await FaceDetector.createFromOptions(vision, {
+        baseOptions: { modelAssetPath: faceDetectorModelPath(), delegate: 'CPU' },
+        runningMode: 'IMAGE',
+        minDetectionConfidence: 0.5,
+      })
+    } catch { }
+  }
 
   try {
-    const vision = await FilesetResolver.forVisionTasks(
-      'https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@0.10.35/wasm',
-    )
+    const vision = await FilesetResolver.forVisionTasks(wasmBaseUrl())
     detectors.objectDetector = await ObjectDetector.createFromOptions(vision, {
+      baseOptions: { modelAssetPath: objectDetectorModelPath(), delegate: 'GPU' },
       runningMode: 'IMAGE',
     })
-  } catch { }
+  } catch {
+    try {
+      const vision = await FilesetResolver.forVisionTasks(wasmBaseUrl())
+      detectors.objectDetector = await ObjectDetector.createFromOptions(vision, {
+        baseOptions: { modelAssetPath: objectDetectorModelPath(), delegate: 'CPU' },
+        runningMode: 'IMAGE',
+      })
+    } catch { }
+  }
 
   return detectors
 }

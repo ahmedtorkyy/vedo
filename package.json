@@ -21,6 +21,15 @@
     "uuid": "^14.0.0",
     "zustand": "^5.0.14"
   },
+  "pnpm": {
+    "onlyBuiltDependencies": [
+      "esbuild",
+      "protobufjs",
+      "sharp",
+      "workerd",
+      "@mediapipe/tasks-vision"
+    ]
+  },
   "devDependencies": {
     "@eslint/js": "^10.0.1",
     "@tailwindcss/vite": "^4.3.0",
