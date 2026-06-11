@@ -83,6 +83,7 @@ export function createEditPlan(input: PlannerInput): EditPlan {
     effects: mergeOverrides(baseStyle.effects, overrides.effects),
     pacing: mergeOverrides(baseStyle.pacing, overrides.pacing),
     overlayFrequency: mergeOverrides(baseStyle.overlayFrequency, overrides.overlayFrequency),
+    jumpCuts: overrides.jumpCuts ?? baseStyle.jumpCuts,
     motionIntensity: baseStyle.motionIntensity,
     transitionPreference: baseStyle.transitionPreference,
   }
@@ -186,9 +187,12 @@ export function createEditPlan(input: PlannerInput): EditPlan {
   const mainClips = input.clips.filter((c) => c.slot === 'A')
 
   if (overlayClips.length > 0 && style.overlayFrequency !== 'rare') {
-    for (const overlay of overlayClips) {
+    for (let oi = 0; oi < overlayClips.length; oi++) {
+      const overlay = overlayClips[oi]
       const overlayDecisions: OverlayDecision[] = determineOverlayDecisions({
         overlayClip: overlay,
+        index: oi,
+        totalOverlays: overlayClips.length,
         mainClips,
         contentAnalysis: input.contentAnalysis,
         segments: input.transcription,
@@ -197,6 +201,7 @@ export function createEditPlan(input: PlannerInput): EditPlan {
           : mainClips.reduce((sum, c) => sum + c.duration, 0),
         style,
         overrides,
+        usedSlots: [],
       })
 
       for (const od of overlayDecisions) {

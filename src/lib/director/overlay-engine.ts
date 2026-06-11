@@ -2,12 +2,23 @@ import type { ContentAnalysis, OverlayPlacement, OverlayDecision, StyleProfile, 
 
 interface OverlayInput {
   overlayClip: { id: string; fileName: string; duration: number }
+  index: number
+  totalOverlays: number
   mainClips: { id: string; fileName: string; duration: number; slot: 'A' | 'B' }[]
   contentAnalysis: ContentAnalysis
   segments: { start: number; end: number; text: string }[]
   timelineDuration: number
   style: StyleProfile
   overrides: InstructionOverrides
+  usedSlots: { start: number; end: number }[]
+}
+
+interface CandidateSlot {
+  start: number
+  end: number
+  priority: number
+  reason: string
+  source: 'important-moment' | 'jump-cut' | 'talking-stretch'
 }
 
 const PLACEMENT_PREFERENCES: Record<string, OverlayPlacement> = {
@@ -24,6 +35,11 @@ const PLACEMENT_PREFERENCES: Record<string, OverlayPlacement> = {
   'general-review': 'right',
   podcast: 'center',
 }
+
+const MIN_OVERLAY_DURATION = 2
+const MAX_OVERLAY_DURATION = 10
+const TALKING_STRETCH_MIN = 8
+const JUMP_CUT_BUFFER = 0.3
 
 function extractOverlayKeywords(fileName: string): string[] {
   return fileName
@@ -42,71 +58,159 @@ export function matchKeyword(text: string, keyword: string): boolean {
   ).test(text)
 }
 
-function findRelevantTimeRange(
-  keywords: string[],
+function findCandidateSlots(
   segments: { start: number; end: number; text: string }[],
   contentAnalysis: ContentAnalysis,
-): { start: number; end: number; confidence: number } | null {
-  if (segments.length === 0) return null
-
-  const matchedSegments: { start: number; end: number; score: number }[] = []
-
-  for (const seg of segments) {
-    const text = seg.text.toLowerCase()
-    let score = 0
-
-    for (const kw of keywords) {
-      if (matchKeyword(text, kw)) {
-        score += kw.length > 4 ? 3 : 1
-      }
-    }
-
-    for (const subject of contentAnalysis.keySubjects) {
-      if (matchKeyword(text, subject)) {
-        score += 2
-      }
-    }
-
-    for (const obj of contentAnalysis.keyObjects) {
-      if (matchKeyword(text, obj)) {
-        score += 2
-      }
-    }
-
-    for (const kw of contentAnalysis.keywords) {
-      if (matchKeyword(text, kw)) {
-        score += 1
-      }
-    }
-
-    if (score > 0) {
-      matchedSegments.push({ start: seg.start, end: seg.end, score })
-    }
-  }
-
-  if (matchedSegments.length > 0) {
-    const best = matchedSegments.reduce((a, b) => (a.score > b.score ? a : b))
-    return {
-      start: Math.max(0, best.start - 0.5),
-      end: Math.min(segments[segments.length - 1]?.end ?? best.end, best.end + 0.5),
-      confidence: Math.min(1, best.score / 10),
-    }
-  }
+  timelineDuration: number,
+): CandidateSlot[] {
+  const slots: CandidateSlot[] = []
 
   for (const moment of contentAnalysis.importantMoments) {
-    const seg = segments.find(
-      (s) => s.start <= moment.time && s.end >= moment.time,
-    )
-    if (seg) {
-      return {
-        start: Math.max(0, seg.start - 0.3),
-        end: Math.min(segments[segments.length - 1]?.end ?? seg.end, seg.end + 0.5),
-        confidence: moment.confidence * 0.8,
+    if (moment.time < timelineDuration) {
+      const start = Math.max(0, moment.time - 0.5)
+      const end = Math.min(timelineDuration, moment.time + 3)
+      slots.push({
+        start,
+        end,
+        priority: 10 + (moment.confidence > 0.7 ? 5 : 0),
+        reason: `Important moment: ${moment.description.slice(0, 50)}`,
+        source: 'important-moment',
+      })
+    }
+  }
+
+  for (let i = 1; i < segments.length; i++) {
+    const gap = segments[i].start - segments[i - 1].end
+    if (gap > 0.1 && gap < 2) {
+      const cutPoint = (segments[i - 1].end + segments[i].start) / 2
+      const start = Math.max(0, cutPoint - JUMP_CUT_BUFFER)
+      const end = Math.min(timelineDuration, cutPoint + 1.5)
+      slots.push({
+        start,
+        end,
+        priority: 8,
+        reason: `Jump-cut transition at ${cutPoint.toFixed(1)}s`,
+        source: 'jump-cut',
+      })
+    }
+  }
+
+  let stretchStart = -1
+  for (let i = 0; i < segments.length; i++) {
+    const seg = segments[i]
+    if (seg.end - seg.start > 3) {
+      if (stretchStart < 0) stretchStart = seg.start
+      const stretchDuration = seg.end - stretchStart
+      if (stretchDuration >= TALKING_STRETCH_MIN && (i === segments.length - 1 || segments[i + 1].start - seg.end > 1)) {
+        const overEnd = Math.min(timelineDuration, seg.start + 4)
+        slots.push({
+          start: seg.start,
+          end: overEnd,
+          priority: 6,
+          reason: `Visual relief during long talking stretch starting at ${seg.start.toFixed(1)}s`,
+          source: 'talking-stretch',
+        })
+        stretchStart = -1
+      }
+    } else {
+      stretchStart = -1
+    }
+  }
+
+  return slots.sort((a, b) => b.priority - a.priority)
+}
+
+function calculateKenBurns(
+  placement: OverlayPlacement,
+  _overlayDuration: number,
+): { panStartX: number; panStartY: number; panEndX: number; panEndY: number } | undefined {
+  if (placement === 'fullscreen') {
+    return {
+      panStartX: 0,
+      panStartY: -5,
+      panEndX: 0,
+      panEndY: 0,
+    }
+  }
+  if (placement === 'center' || placement === 'pip') {
+    return {
+      panStartX: 0,
+      panStartY: 0,
+      panEndX: 0,
+      panEndY: 0,
+    }
+  }
+  return undefined
+}
+
+function assignSlotsToOverlays(
+  slots: CandidateSlot[],
+  overlayClips: { id: string; fileName: string; duration: number; index: number; totalOverlays: number }[],
+  segments: { start: number; end: number; text: string }[],
+  _contentAnalysis: ContentAnalysis,
+  timelineDuration: number,
+): { clipId: string; startTime: number; endTime: number; reason: string; confidence: number }[] {
+  const assignments: { clipId: string; startTime: number; endTime: number; reason: string; confidence: number }[] = []
+  const usedRanges: { start: number; end: number }[] = []
+
+  for (const oc of overlayClips) {
+    let assigned = false
+
+    const overlayKeywords = extractOverlayKeywords(oc.fileName)
+    let bonusScore = 0
+    if (overlayKeywords.length > 0) {
+      for (const seg of segments) {
+        for (const kw of overlayKeywords) {
+          if (matchKeyword(seg.text.toLowerCase(), kw)) {
+            bonusScore += 2
+          }
+        }
+      }
+    }
+
+    for (const slot of slots) {
+      const slotDuration = slot.end - slot.start
+      if (slotDuration < MIN_OVERLAY_DURATION) continue
+
+      const isOverlapping = usedRanges.some(
+        (r) => r.start < slot.end && r.end > slot.start,
+      )
+      if (isOverlapping) continue
+
+      const overlayFit = Math.min(oc.duration, slotDuration, MAX_OVERLAY_DURATION)
+      if (overlayFit < MIN_OVERLAY_DURATION) continue
+
+      const endTime = Math.min(slot.start + overlayFit, timelineDuration)
+      if (endTime <= slot.start) continue
+
+      assignments.push({
+        clipId: oc.id,
+        startTime: slot.start,
+        endTime,
+        reason: slot.reason + (bonusScore > 0 ? ` (keyword bonus: +${bonusScore})` : ''),
+        confidence: Math.min(1, (slot.priority + bonusScore) / 20),
+      })
+      usedRanges.push({ start: slot.start, end: endTime })
+      assigned = true
+      break
+    }
+
+    if (!assigned) {
+      const fallbackStart = Math.min(timelineDuration * 0.3, timelineDuration - MIN_OVERLAY_DURATION)
+      const fallbackEnd = Math.min(fallbackStart + oc.duration, timelineDuration)
+      if (fallbackEnd > fallbackStart) {
+        assignments.push({
+          clipId: oc.id,
+          startTime: Math.max(0, fallbackStart),
+          endTime: fallbackEnd,
+          reason: `Fallback placement at ${fallbackStart.toFixed(1)}s (no specific slot available)`,
+          confidence: 0.3,
+        })
       }
     }
   }
 
-  return null
+  return assignments
 }
 
 function determinePlacement(
@@ -115,14 +219,11 @@ function determinePlacement(
   overrides: InstructionOverrides,
 ): OverlayPlacement {
   const categoryDefault = PLACEMENT_PREFERENCES[contentAnalysis.category] ?? 'right'
-
   if (overrides.framingStyle === 'close-up') return 'pip'
   if (overrides.framingStyle === 'wide') return 'center'
   if (overrides.framingStyle === 'medium') return 'right'
-
   if (style.overlayFrequency === 'frequent') return 'center'
   if (style.overlayFrequency === 'rare') return 'pip'
-
   if (contentAnalysis.category === 'gaming') return 'fullscreen'
   if (contentAnalysis.category === 'educational') return 'left'
   if (contentAnalysis.category === 'tutorial') return 'left'
@@ -130,25 +231,30 @@ function determinePlacement(
   if (contentAnalysis.category === 'product-review') return 'right'
   if (contentAnalysis.category === 'food-review') return 'pip'
   if (contentAnalysis.category === 'podcast') return 'center'
-
   return categoryDefault
 }
 
 export function determineOverlayDecisions(input: OverlayInput): OverlayDecision[] {
   const decisions: OverlayDecision[] = []
-  const overlayKeywords = extractOverlayKeywords(input.overlayClip.fileName)
+  const slots = findCandidateSlots(input.segments, input.contentAnalysis, input.timelineDuration)
 
-  const relevantRange = findRelevantTimeRange(
-    overlayKeywords,
+  const entries = [{
+    id: input.overlayClip.id,
+    fileName: input.overlayClip.fileName,
+    duration: input.overlayClip.duration,
+    index: input.index,
+    totalOverlays: input.totalOverlays,
+  }]
+
+  const assignments = assignSlotsToOverlays(
+    slots,
+    entries,
     input.segments,
     input.contentAnalysis,
+    input.timelineDuration,
   )
 
-  const placement = determinePlacement(
-    input.contentAnalysis,
-    input.style,
-    input.overrides,
-  )
+  const placement = determinePlacement(input.contentAnalysis, input.style, input.overrides)
 
   const scaleMap: Record<OverlayPlacement, number> = {
     center: 0.5,
@@ -166,28 +272,36 @@ export function determineOverlayDecisions(input: OverlayInput): OverlayDecision[
     fullscreen: 1.0,
   }
 
-  if (relevantRange) {
-    decisions.push({
-      overlayClipId: input.overlayClip.id,
-      startTime: relevantRange.start,
-      endTime: Math.min(relevantRange.end, relevantRange.start + input.overlayClip.duration),
+  for (const assignment of assignments) {
+    const kenBurns = calculateKenBurns(placement, assignment.endTime - assignment.startTime)
+    const params: Record<string, unknown> = {
       placement,
       scale: scaleMap[placement],
       opacity: opacityMap[placement],
-      reason: `Overlay "${input.overlayClip.fileName}" placed at ${relevantRange.start.toFixed(1)}s (keyword match, confidence ${(relevantRange.confidence * 100).toFixed(0)}%)`,
-    })
-  } else if (input.contentAnalysis.importantMoments.length > 0) {
-    const moment = input.contentAnalysis.importantMoments[0]
+      muted: true,
+    }
+    if (kenBurns) {
+      params.panStartX = kenBurns.panStartX
+      params.panStartY = kenBurns.panStartY
+      params.panEndX = kenBurns.panEndX
+      params.panEndY = kenBurns.panEndY
+    }
+    if (input.overrides.safeFrameCenter) {
+      params.safeFrameCenter = true
+    }
+
     decisions.push({
-      overlayClipId: input.overlayClip.id,
-      startTime: Math.max(0, moment.time - 0.5),
-      endTime: Math.min(input.timelineDuration, moment.time + input.overlayClip.duration),
+      overlayClipId: assignment.clipId,
+      startTime: assignment.startTime,
+      endTime: assignment.endTime,
       placement,
       scale: scaleMap[placement],
       opacity: opacityMap[placement],
-      reason: `Overlay "${input.overlayClip.fileName}" aligned with important moment: "${moment.description.slice(0, 40)}"`,
+      reason: assignment.reason,
     })
-  } else {
+  }
+
+  if (decisions.length === 0) {
     const midPoint = input.timelineDuration * 0.3
     decisions.push({
       overlayClipId: input.overlayClip.id,
@@ -196,7 +310,7 @@ export function determineOverlayDecisions(input: OverlayInput): OverlayDecision[
       placement,
       scale: scaleMap[placement],
       opacity: opacityMap[placement],
-      reason: `Overlay "${input.overlayClip.fileName}" placed at ${midPoint.toFixed(1)}s (no specific keyword match)`,
+      reason: `Overlay "${input.overlayClip.fileName}" placed at ${midPoint.toFixed(1)}s (fallback)`,
     })
   }
 

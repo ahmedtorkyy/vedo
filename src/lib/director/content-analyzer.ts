@@ -351,11 +351,11 @@ function detectEmotionalMoments(
 }
 
 const PROPER_NOUN_PATTERNS = [
-  /(?:this is|meet|introducing|welcome|here's|here is|say hello to) (\w+(?:\s\w+)?)/i,
-  /(?:my name is|i'm|i am) (\w+(?:\s\w+)?)/i,
-  /(?:check out|try|use|get) (?:the |a |an )?(\w+(?:\s\w+)?)/i,
-  /(?:have you (?:tried|seen|used|heard of) )(\w+(?:\s\w+)?)/i,
-  /(?:the best|the worst|the most) (\w+(?:\s\w+)?)/i,
+  /(?:this is|meet|introducing|welcome|here's|here is|say hello to) (\w+(?:\s\w+)?)/gi,
+  /(?:my name is|i'm|i am) (\w+(?:\s\w+)?)/gi,
+  /(?:check out|try|use|get) (?:the |a |an )?(\w+(?:\s\w+)?)/gi,
+  /(?:have you (?:tried|seen|used|heard of) )(\w+(?:\s\w+)?)/gi,
+  /(?:the best|the worst|the most) (\w+(?:\s\w+)?)/gi,
 ]
 
 const KNOWN_ENTITY_PATTERNS = [

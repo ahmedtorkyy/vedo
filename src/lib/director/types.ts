@@ -16,6 +16,7 @@ export interface StyleProfile {
   effects: EffectsLevel
   pacing: PacingLevel
   overlayFrequency: OverlayFrequency
+  jumpCuts: boolean
   motionIntensity: number
   transitionPreference: string
 }
@@ -84,7 +85,19 @@ export interface InstructionOverrides {
   effects: EffectsLevel | null
   framingStyle: 'close-up' | 'medium' | 'wide' | null
   visualEffects: string[]
+  jumpCuts: boolean | null
+  platformPreset: string | null
+  aspectRatio: string | null
+  zoomTargets: string[]
+  multicam: boolean | null
+  contentReferences: string[]
+  captionsEnabled: boolean | null
+  audioDirectives: string[]
+  speedDirective: number | null
+  targetDuration: number | null
+  safeFrameCenter: boolean | null
   parsedDirectives: { type: string; value: string; source: string }[]
+  unmatchedPhrases: string[]
 }
 
 export type OverlayPlacement = 'center' | 'left' | 'right' | 'pip' | 'fullscreen'

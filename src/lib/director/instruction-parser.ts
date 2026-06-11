@@ -95,6 +95,99 @@ const VISUAL_EFFECTS_PATTERNS: { regex: RegExp; value: string }[] = [
   { regex: /(?:نص|تعليق|ترجمة|عنوان)\s*(?:تراكب|على)?/i, value: 'text-overlay' },
 ]
 
+const JUMP_CUT_PATTERNS: { regex: RegExp; value: boolean }[] = [
+  { regex: /\bjump\s*cut/i, value: true },
+  { regex: /\bno\s*(?:transitions|dissolve|fade)\b/i, value: true },
+  { regex: /\bstraight\s*cut/i, value: true },
+  { regex: /\bhard\s*cut/i, value: true },
+  { regex: /\bfast\s*cuts/i, value: true },
+  { regex: /\bquick\s*edits/i, value: true },
+  { regex: /\b(?:no\s*)?dissolve/i, value: true },
+  { regex: /(?:قص|قطع)\s*(?:سريع|مباشر|جاف)/i, value: true },
+  { regex: /(?:بدون|دون)\s*(?:انتقالات|تأثيرات)/i, value: true },
+]
+
+const PLATFORM_PATTERNS: { regex: RegExp; value: string }[] = [
+  { regex: /\b(?:for|on|upload\s*to|make\s*for)\s*(?:youtube|yt)\b/i, value: 'youtube' },
+  { regex: /\b(?:for|on|upload\s*to)\s*tiktok\b/i, value: 'tiktok' },
+  { regex: /\b(?:for|on|upload\s*to)\s*(?:instagram|ig|reel)\b/i, value: 'instagram' },
+  { regex: /\b(?:for|on|upload\s*to)\s*(?:shorts|youtube\s*shorts)\b/i, value: 'shorts' },
+  { regex: /\b(?:for|on|upload\s*to)\s*(?:facebook|fb)\b/i, value: 'facebook' },
+]
+
+const ASPECT_PATTERNS: { regex: RegExp; value: string }[] = [
+  { regex: /\bvertical\b/i, value: '9:16' },
+  { regex: /\b(?:horizontal|landscape)\b/i, value: '16:9' },
+  { regex: /\bsquare\b/i, value: '1:1' },
+  { regex: /\bportrait\b/i, value: '9:16' },
+  { regex: /\b(?:4[\s:]?5|portrait\s*friendly)\b/i, value: '4:5' },
+]
+
+const ZOOM_TARGET_PATTERNS: { regex: RegExp; value: string }[] = [
+  { regex: /\b(?:reveal|showcase)\b/i, value: 'reveal' },
+  { regex: /\b(?:eating|food)\b/i, value: 'eating' },
+  { regex: /\breactions?\b/i, value: 'reaction' },
+  { regex: /\b(?:product|item)\b/i, value: 'product' },
+  { regex: /\bwhen I show\b/i, value: 'demo' },
+  { regex: /\bface\b/i, value: 'face' },
+  { regex: /\bdemo\b/i, value: 'demo' },
+  { regex: /\b(?:detail|close.?up)\b/i, value: 'detail' },
+]
+
+const MULTICAM_PATTERNS: { regex: RegExp; value: boolean }[] = [
+  { regex: /\b(?:multicam|multi.?cam|multi.?angle|alternate.?angles)\b/i, value: true },
+  { regex: /\b(?:different\s*angles|camera\s*switch)\b/i, value: true },
+]
+
+const CONTENT_REF_PATTERNS: RegExp[] = [
+  /\bremove\s+the\s+part\s+about\s+(.+?)(?:\.|,|and|$)/gi,
+  /\bcut\s+(?:the\s+)?(?:part|section|segment)\s+(?:about|on|of)\s+(.+?)(?:\.|,|and|$)/gi,
+  /\b(?:skip|delete|remove)\s+(.+?)(?:\s+part|\s+section|\s*\.|\s*,|$)/gi,
+  /\b(?:keep\s+only|focus\s+on)\s+(.+?)(?:\.|,|and|$)/gi,
+]
+
+const CAPTION_PATTERNS: { regex: RegExp; value: boolean }[] = [
+  { regex: /\b(?:captions?\s+on|subtitles?\s+on|add\s+captions?|include\s+subtitles?)\b/i, value: true },
+  { regex: /\b(?:captions?\s+off|subtitles?\s+off|no\s+captions?|remove\s+captions?)\b/i, value: false },
+  { regex: /\b(?:always\s+show\s+captions?|forced\s+captions?)\b/i, value: true },
+]
+
+const AUDIO_DIRECTIVES: { regex: RegExp; value: string }[] = [
+  { regex: /\b(?:background\s+music|bgm|ambient\s+music)\b/i, value: 'background-music' },
+  { regex: /\b(?:voiceover|narration|voice\s+over)\b/i, value: 'voiceover' },
+  { regex: /\b(?:ambient\s+sound|environment\s+sound|nature\s+sounds)\b/i, value: 'ambient' },
+  { regex: /\b(?:soundtrack|score|music\s+track)\b/i, value: 'soundtrack' },
+  { regex: /\b(?:silence\s+removal|remove\s+silence)\b/i, value: 'remove-silence' },
+  { regex: /\b(?:music|song)\s*(?:bed|under|behind)\b/i, value: 'background-music' },
+]
+
+const SPEED_PATTERNS: { regex: RegExp; value: number }[] = [
+  { regex: /\b(?:2x|2\s*timess?|double\s*speed)\b/i, value: 2 },
+  { regex: /\b(?:1\.5x|1\.5\s*timess?|one\s*and\s*a\s*half)\b/i, value: 1.5 },
+  { regex: /\b(?:1\.25x|1\.25\s*timess?)\b/i, value: 1.25 },
+  { regex: /\b(?:speed\s*up|faster|increase\s*speed)\b/i, value: 1.25 },
+  { regex: /\b(?:slow\s*down|decrease\s*speed|slower)\b/i, value: 0.75 },
+  { regex: /\b(?:half\s*speed|0\.5x)\b/i, value: 0.5 },
+]
+
+const DURATION_PATTERNS: RegExp[] = [
+  /\b(?:under|less\s*than|max|maximum)\s*(\d+)\s*(?:seconds?|sec|s)\b/i,
+  /\b(?:make\s*it|keep\s*it|target)\s*(\d+)\s*(?:seconds?|sec|s)\b/i,
+  /\b(?:under|less\s*than|max|maximum)\s*(\d+)\s*(?:minutes?|min)\b/i,
+  /\b(?:make\s*it|keep\s*it|target)\s*(\d+)\s*(?:minutes?|min)\b/i,
+]
+
+const NEGATION_PATTERNS: { prefix: RegExp; dimension: string }[] = [
+  { prefix: /(?:don't|do not|without|no|never)\s+(?:use\s+)?transitions?/i, dimension: 'transitions' },
+  { prefix: /(?:don't|do not|without|no|never)\s+(?:use\s+)?zooms?/i, dimension: 'zoom' },
+  { prefix: /(?:don't|do not|without|no|never)\s+(?:use\s+)?(?:effects?|filters?)/i, dimension: 'effects' },
+  { prefix: /(?:don't|do not|without|no|never)\s+(?:use\s+)?(?:overlays?|b.?roll)/i, dimension: 'overlayFrequency' },
+  { prefix: /(?:don't|do not|without|no|never)\s+(?:use\s+)?(?:dissolve|fade|wipes?)/i, dimension: 'jumpCuts' },
+  { prefix: /(?:no|don't|do not|without)\s+(?:jump\s*)?cuts?/i, dimension: 'jumpCuts' },
+  { prefix: /(?:don't|do not|without|no|never)\s+(?:use\s+)?(?:captions?|subtitles?)/i, dimension: 'captionsEnabled' },
+  { prefix: /(?:don't|do not|without|no|never)\s+(?:use\s+)?(?:multicam|multi.?cam)/i, dimension: 'multicam' },
+]
+
 function findFirst<T>(text: string, patterns: { regex: RegExp; value: T }[]): T | null {
   for (const { regex, value } of patterns) {
     if (regex.test(text)) return value
@@ -110,6 +203,50 @@ function findAll<T>(text: string, patterns: { regex: RegExp; value: T }[]): T[] 
   return results
 }
 
+function applyNegationPrePass(text: string): Set<string> {
+  const negated: Set<string> = new Set()
+  for (const { prefix, dimension } of NEGATION_PATTERNS) {
+    if (prefix.test(text)) {
+      negated.add(dimension)
+    }
+  }
+  return negated
+}
+
+function findZoomTargets(text: string): string[] {
+  const targets: string[] = []
+  for (const { regex, value } of ZOOM_TARGET_PATTERNS) {
+    if (regex.test(text)) targets.push(value)
+  }
+  return targets
+}
+
+function findContentReferences(text: string): string[] {
+  const refs: string[] = []
+  for (const pattern of CONTENT_REF_PATTERNS) {
+    const matches = text.matchAll(pattern)
+    for (const m of matches) {
+      const phrase = (m[1] ?? '').trim()
+      if (phrase.length > 2) refs.push(phrase)
+    }
+  }
+  return refs
+}
+
+function findTargetDuration(text: string): number | null {
+  for (const pattern of DURATION_PATTERNS) {
+    const match = pattern.exec(text)
+    if (match) {
+      const num = parseInt(match[1], 10)
+      if (!isNaN(num) && num > 0) {
+        if (pattern.source.includes('minutes?')) return num * 60
+        return num
+      }
+    }
+  }
+  return null
+}
+
 export function parseInstructions(instructions: string): InstructionOverrides {
   const text = instructions.trim()
   if (!text) {
@@ -121,27 +258,76 @@ export function parseInstructions(instructions: string): InstructionOverrides {
       effects: null,
       framingStyle: null,
       visualEffects: [],
+      jumpCuts: null,
+      platformPreset: null,
+      aspectRatio: null,
+      zoomTargets: [],
+      multicam: null,
+      contentReferences: [],
+      captionsEnabled: null,
+      audioDirectives: [],
+      speedDirective: null,
+      targetDuration: null,
+      safeFrameCenter: null,
       parsedDirectives: [],
+      unmatchedPhrases: [],
     }
   }
 
+  const negated = applyNegationPrePass(text)
+
   const zoom = findFirst(text, ZOOM_PATTERNS)
-  const transitions = findFirst(text, TRANSITION_PATTERNS)
+  let transitions = findFirst(text, TRANSITION_PATTERNS)
   const pacing = findFirst(text, PACING_PATTERNS)
   const overlayFrequency = findFirst(text, OVERLAY_PATTERNS)
   const effects = findFirst(text, EFFECTS_PATTERNS)
   const framingStyle = findFirst(text, FRAMING_PATTERNS)
   const visualEffects = findAll(text, VISUAL_EFFECTS_PATTERNS)
+  const jumpCuts = findFirst(text, JUMP_CUT_PATTERNS)
+  const platformPreset = findFirst(text, PLATFORM_PATTERNS)
+  const aspectRatio = findFirst(text, ASPECT_PATTERNS)
+  const zoomTargets = findZoomTargets(text)
+  const multicam = findFirst(text, MULTICAM_PATTERNS)
+  const contentReferences = findContentReferences(text)
+  const captionsEnabled = findFirst(text, CAPTION_PATTERNS)
+  const audioDirectives = findAll(text, AUDIO_DIRECTIVES)
+  const speedDirective = findFirst(text, SPEED_PATTERNS)
+  const targetDuration = findTargetDuration(text)
+  const unmatchedPhrases: string[] = []
+
+  if (negated.has('transitions')) transitions = 'minimal'
 
   const directives: { type: string; value: string; source: string }[] = []
-  if (zoom) directives.push({ type: 'zoom', value: zoom, source: 'instruction' })
-  if (transitions) directives.push({ type: 'transitions', value: transitions, source: 'instruction' })
-  if (pacing) directives.push({ type: 'pacing', value: pacing, source: 'instruction' })
-  if (overlayFrequency) directives.push({ type: 'overlay-frequency', value: overlayFrequency, source: 'instruction' })
-  if (effects) directives.push({ type: 'effects', value: effects, source: 'instruction' })
-  if (framingStyle) directives.push({ type: 'framing', value: framingStyle, source: 'instruction' })
-  for (const ve of visualEffects) {
-    directives.push({ type: 'visual-effect', value: ve, source: 'instruction' })
+
+  const pushDirective = (type: string, value: string | boolean | number | null) => {
+    if (value !== null && value !== undefined) {
+      directives.push({ type, value: String(value), source: 'instruction' })
+    }
+  }
+
+  if (zoom) pushDirective('zoom', zoom)
+  if (transitions) pushDirective('transitions', transitions)
+  if (pacing) pushDirective('pacing', pacing)
+  if (overlayFrequency) pushDirective('overlay-frequency', overlayFrequency)
+  if (effects) pushDirective('effects', effects)
+  if (framingStyle) pushDirective('framing', framingStyle)
+  if (jumpCuts !== null) pushDirective('jump-cuts', jumpCuts)
+  if (platformPreset) pushDirective('platform', platformPreset)
+  if (aspectRatio) pushDirective('aspect-ratio', aspectRatio)
+  if (multicam !== null) pushDirective('multicam', multicam)
+  if (captionsEnabled !== null) pushDirective('captions', captionsEnabled)
+  if (speedDirective !== null) pushDirective('speed', speedDirective)
+  if (targetDuration !== null) pushDirective('target-duration', targetDuration)
+  for (const ve of visualEffects) pushDirective('visual-effect', ve)
+  for (const zt of zoomTargets) pushDirective('zoom-target', zt)
+  for (const ref of contentReferences) pushDirective('content-ref', ref)
+  for (const ad of audioDirectives) pushDirective('audio', ad)
+  if (unmatchedPhrases.length > 0) {
+    for (const up of unmatchedPhrases) pushDirective('unmatched', up)
+  }
+
+  if (text.toLowerCase().includes('face') || text.toLowerCase().includes('always center') || text.toLowerCase().includes('centered')) {
+    directives.push({ type: 'safe-frame-center', value: 'face', source: 'instruction' })
   }
 
   return {
@@ -152,7 +338,19 @@ export function parseInstructions(instructions: string): InstructionOverrides {
     effects,
     framingStyle,
     visualEffects,
+    jumpCuts,
+    platformPreset,
+    aspectRatio,
+    zoomTargets,
+    multicam,
+    contentReferences,
+    captionsEnabled,
+    audioDirectives,
+    speedDirective,
+    targetDuration,
+    safeFrameCenter: directives.some((d) => d.type === 'safe-frame-center') || null,
     parsedDirectives: directives,
+    unmatchedPhrases,
   }
 }
 

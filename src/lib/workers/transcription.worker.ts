@@ -89,11 +89,12 @@ const MODELS = {
 
 type ModelKey = keyof typeof MODELS
 
-async function loadModel(modelKey: ModelKey = 'whisper-tiny') {
+async function loadModel(modelKey: ModelKey = 'whisper-base') {
   if (loading) return
   loading = true
   try {
-    const { pipeline: createPipeline } = await import('@xenova/transformers')
+    const { pipeline: createPipeline, env } = await import('@xenova/transformers')
+    env.allowLocalModels = false
     pipeline = await createPipeline('automatic-speech-recognition', MODELS[modelKey], {
       quantized: true,
     })

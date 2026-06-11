@@ -1,14 +1,11 @@
-import { useState, useCallback } from 'react'
+import { useState, useEffect, useCallback, useRef } from 'react'
 import { useClipStore } from '../../lib/state'
-import { useTranscriptionStore, getAvailableModels } from '../../lib/transcription'
+import { useTranscriptionStore } from '../../lib/transcription'
 import { useTranscription } from '../../hooks/useTranscription'
 import { TranscriptionSegmentRow } from './TranscriptionSegment'
 import { CaptionEditor } from './CaptionEditor'
-import { recommendModel } from '../../lib/editing'
+import { backgroundLoadModel } from '../../lib/transcription/model-loader'
 import type { AudioCleansingOptions } from '../../types'
-
-const MODELS = getAvailableModels()
-const RECOMMENDED = recommendModel()
 
 interface TranscriptionPanelProps {
   projectId: string
@@ -16,13 +13,36 @@ interface TranscriptionPanelProps {
 
 export function TranscriptionPanel({ projectId }: TranscriptionPanelProps) {
   const [cleansing, setCleansing] = useState(false)
+  const [bgStatus, setBgStatus] = useState<'idle' | 'loading' | 'ready' | 'error' | 'data-saver'>(() => {
+    const conn = 'connection' in navigator
+      ? (navigator as Navigator & { connection?: { saveData?: boolean } }).connection
+      : undefined
+    return conn?.saveData === true ? 'data-saver' : 'idle'
+  })
+  const bgStarted = useRef(false)
   const selectedClipId = useClipStore((s) => (s.selectedClipId[projectId] ?? null))
   const setSelectedClipId = useClipStore((s) => s.setSelectedClipId)
   const clipsA = useClipStore((s) => s.getSlotClips(projectId, 'A'))
   const clipsB = useClipStore((s) => s.getSlotClips(projectId, 'B'))
   const allClips = [...clipsA, ...clipsB]
   const results = useTranscriptionStore((s) => s.results)
-  const { transcribeClip, cleanseClipAudio, modelKey, setModelKey } = useTranscription()
+  const { transcribeClip, cleanseClipAudio } = useTranscription()
+
+  useEffect(() => {
+    if (bgStarted.current || bgStatus !== 'idle') return
+    bgStarted.current = true
+
+    setBgStatus('loading')
+    let cancelled = false
+    backgroundLoadModel({
+      onProgress: (pct: number) => {
+        if (pct >= 100 && !cancelled) setBgStatus('ready')
+      },
+      onError: () => { if (!cancelled) setBgStatus('error') },
+      onReady: () => { if (!cancelled) setBgStatus('ready') },
+    })
+    return () => { cancelled = true }
+  }, [bgStatus])
 
   const result = selectedClipId ? results[selectedClipId] : undefined
   const selectedClip = allClips.find((c) => c.id === selectedClipId)
@@ -58,6 +78,30 @@ export function TranscriptionPanel({ projectId }: TranscriptionPanelProps) {
     <section role="region" aria-label="Transcription panel" className="space-y-3">
       <h2 className="text-sm font-semibold text-gray-300">AI Transcription</h2>
 
+      {bgStatus === 'loading' && (
+        <div role="status" className="rounded-md bg-sky-900/30 px-3 py-2 text-xs text-sky-300 animate-pulse">
+          Getting your AI workspace ready&hellip;
+        </div>
+      )}
+
+      {bgStatus === 'ready' && (
+        <div role="status" className="rounded-md bg-emerald-900/30 px-3 py-2 text-xs text-emerald-300">
+          AI model ready &mdash; whisper-base multilingual
+        </div>
+      )}
+
+      {bgStatus === 'data-saver' && (
+        <div role="status" className="rounded-md bg-amber-900/30 px-3 py-2 text-xs text-amber-300">
+          Data Saver is on. Model download will start when you begin transcribing.
+        </div>
+      )}
+
+      {bgStatus === 'error' && (
+        <div role="status" className="rounded-md bg-red-900/30 px-3 py-2 text-xs text-red-300">
+          Background model download failed. Will retry when you start transcribing.
+        </div>
+      )}
+
       <div className="space-y-1">
         <label htmlFor="transcribe-clip" className="text-xs text-gray-500">Select a clip</label>
         <select
@@ -74,37 +118,6 @@ export function TranscriptionPanel({ projectId }: TranscriptionPanelProps) {
             </option>
           ))}
         </select>
-      </div>
-
-      <div className="space-y-1">
-        <label htmlFor="model-select" className="text-xs text-gray-500">AI Model</label>
-        <div className="flex items-center gap-2">
-          <select
-            id="model-select"
-            value={modelKey}
-            onChange={(e) => setModelKey(e.target.value as typeof modelKey)}
-            className="w-full rounded-md border border-gray-600 bg-gray-800 px-3 py-2 text-sm text-gray-200 focus:outline-none focus:ring-2 focus:ring-sky-500"
-            aria-label="Select transcription model"
-          >
-            {MODELS.map((m) => (
-              <option key={m.key} value={m.key}>
-                {m.key === 'whisper-tiny' ? 'Fast (recommended)' :
-                 m.key === 'whisper-base' ? 'Balanced' :
-                 'Best accuracy'}
-              </option>
-            ))}
-          </select>
-          {modelKey !== RECOMMENDED && (
-            <button
-              type="button"
-              onClick={() => setModelKey(RECOMMENDED as typeof modelKey)}
-              className="shrink-0 rounded bg-emerald-800 px-2 py-1 text-[10px] text-emerald-200 hover:bg-emerald-700 focus:outline-none focus:ring-2 focus:ring-emerald-500"
-              aria-label={`Switch to recommended model`}
-            >
-              Use recommended
-            </button>
-          )}
-        </div>
       </div>
 
       {selectedClipId && (

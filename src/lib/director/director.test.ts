@@ -2,7 +2,7 @@ import { describe, it, expect } from 'vitest'
 import { splitRegionAcrossClips, globalToLocal, createEditPlan } from './edit-planner'
 import { parseInstructions } from './instruction-parser'
 import { matchKeyword } from './overlay-engine'
-import { detectHooks } from './content-analyzer'
+import { analyzeContent, detectHooks } from './content-analyzer'
 import type { ContentAnalysis } from './types'
 import type { RetentionAnalysis } from './retention-engine'
 
@@ -363,14 +363,80 @@ describe('createEditPlan overlay cross-clip integration', () => {
     expect(clip1Overlay).toBeDefined()
     expect(clip2Overlay).toBeDefined()
 
-    expect(clip1Overlay!.startTime).toBeCloseTo(8.7, 1)
+    expect(clip1Overlay!.startTime).toBeCloseTo(9.0, 1)
     expect(clip1Overlay!.endTime).toBeCloseTo(10, 1)
 
     expect(clip2Overlay!.startTime).toBeCloseTo(0, 1)
-    expect(clip2Overlay!.endTime).toBeCloseTo(1.5, 1)
+    expect(clip2Overlay!.endTime).toBeCloseTo(2.5, 1)
 
     const clip1Duration = clip1Overlay!.endTime - clip1Overlay!.startTime
     const clip2Duration = clip2Overlay!.endTime - clip2Overlay!.startTime
-    expect(clip1Duration + clip2Duration).toBeCloseTo(2.8, 1)
+    expect(clip1Duration + clip2Duration).toBeCloseTo(3.5, 1)
+  })
+})
+
+// --- analyzeContent end-to-end over a real transcript ---
+describe('analyzeContent end-to-end', () => {
+  const segments = [
+    { start: 0, end: 2.5, text: 'what is up everyone welcome back to the channel' },
+    { start: 2.5, end: 5, text: 'today we are going to check out the new iPhone 16 Pro' },
+    { start: 5, end: 8, text: 'this is the most amazing smartphone I have ever used' },
+    { start: 8, end: 11, text: 'let me show you the incredible camera system' },
+    { start: 11, end: 14, text: 'the design is absolutely stunning and the battery life is incredible' },
+    { start: 14, end: 17, text: 'here is a quick demo of the action button' },
+    { start: 17, end: 20, text: 'make sure to subscribe if you enjoyed this review' },
+  ]
+
+  const result = analyzeContent(segments, 20, 'iphone-16-pro-review.mp4')
+
+  it('infers topic from filename', () => {
+    expect(result.topic).toBe('iphone 16 pro review')
+  })
+
+  it('detects review-related category', () => {
+    expect(result.category).toMatch(/review/)
+  })
+
+  it('extracts keywords', () => {
+    expect(result.keywords.length).toBeGreaterThan(0)
+    expect(result.keywords.some((k) => k.toLowerCase().includes('iphone'))).toBe(true)
+  })
+
+  it('detects hook from first segment', () => {
+    expect(result.structure.hook).not.toBeNull()
+    expect(result.structure.hook!.start).toBe(0)
+  })
+
+  it('identifies important moments', () => {
+    const moments = result.importantMoments
+    expect(moments.length).toBeGreaterThan(0)
+    const amazingMoment = moments.find((m) => m.description.toLowerCase().includes('amazing'))
+    expect(amazingMoment).toBeDefined()
+  })
+
+  it('detects emotional moments', () => {
+    expect(result.emotionalMoments.length).toBeGreaterThan(0)
+    const excitement = result.emotionalMoments.find((m) => m.emotion.includes('excitement') || m.emotion.includes('strong'))
+    expect(excitement).toBeDefined()
+  })
+
+  it('extracts key subjects', () => {
+    expect(result.keySubjects.length).toBeGreaterThan(0)
+    const hasIPhone = result.keySubjects.some((s) => s.toLowerCase().includes('iphone'))
+    const hasChannel = result.keySubjects.some((s) => s.toLowerCase().includes('channel'))
+    expect(hasIPhone || hasChannel).toBe(true)
+  })
+
+  it('extracts key objects', () => {
+    expect(result.keyObjects.length).toBeGreaterThan(0)
+    const hasCamera = result.keyObjects.some((o) => o.toLowerCase().includes('camera'))
+    const hasBattery = result.keyObjects.some((o) => o.toLowerCase().includes('battery'))
+    const hasDesign = result.keyObjects.some((o) => o.toLowerCase().includes('design'))
+    expect(hasCamera || hasBattery || hasDesign).toBe(true)
+  })
+
+  it('detects conclusion structure', () => {
+    expect(result.structure.conclusion).not.toBeNull()
+    expect(result.structure.conclusion!.start).toBeGreaterThanOrEqual(17)
   })
 })

@@ -1,20 +1,18 @@
-import { useCallback, useRef, useState } from 'react'
+import { useCallback, useRef } from 'react'
 import { useClipStore } from '../lib/state'
 import { extractAudio, cleanAudio } from '../lib/ffmpeg'
 import { loadTranscriptionModel, transcribeFromOpfs } from '../lib/transcription'
 import { useTranscriptionStore } from '../lib/transcription'
-import { recommendModel } from '../lib/editing/device-capability'
 import type { AudioCleansingOptions } from '../types'
 
-type ModelKey = 'whisper-tiny' | 'whisper-base' | 'whisper-small'
+const MODEL_KEY = 'whisper-base'
 
 export function useTranscription() {
   const transcribingRef = useRef(false)
-  const [modelKey, setModelKey] = useState<ModelKey>(recommendModel())
 
   const ensureModel = useCallback(async () => {
-    await loadTranscriptionModel(modelKey)
-  }, [modelKey])
+    await loadTranscriptionModel(MODEL_KEY)
+  }, [])
 
   const transcribeClip = useCallback(async (projectId: string, clipId: string) => {
     if (transcribingRef.current) return
@@ -81,5 +79,5 @@ export function useTranscription() {
     }
   }, [ensureModel])
 
-  return { transcribeClip, cleanseClipAudio, modelKey, setModelKey }
+  return { transcribeClip, cleanseClipAudio }
 }
