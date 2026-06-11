@@ -40,21 +40,23 @@ function decodeWavToF32(wavData: Uint8Array): { audio: Float32Array; sampleRate:
   if (wave !== 'WAVE') return null
   const sampleRate = view.getUint32(24, true)
 
-  let dataOffset = 44
-  let found = false
-  for (let i = 12; i < view.byteLength - 8; i++) {
+  let dataOffset = 0
+  let dataSize = 0
+  let i = 12
+  while (i + 8 <= view.byteLength) {
     const chunkId = String.fromCharCode(view.getUint8(i), view.getUint8(i + 1), view.getUint8(i + 2), view.getUint8(i + 3))
     const chunkSize = view.getUint32(i + 4, true)
     if (chunkId === 'data') {
       dataOffset = i + 8
-      found = true
+      dataSize = chunkSize
       break
     }
     i += 8 + chunkSize
+    if (chunkSize % 2 !== 0) i += 1
   }
-  if (!found) return null
+  if (dataOffset === 0) return null
 
-  const dataLength = view.byteLength - dataOffset
+  const dataLength = dataSize
   const channels = view.getUint16(22, true)
   const bitsPerSample = view.getUint16(34, true)
   const bytesPerFrame = channels * (bitsPerSample / 8)
