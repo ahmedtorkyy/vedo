@@ -87,12 +87,12 @@ function buildZoomFilters(zoomDecisions: EditDecision[]): string[] {
     const factor = MAX_ZOOM[intensity] ?? 1.05
     const duration = Math.max(0.1, zd.endTime - zd.startTime)
     const rate = ((factor - 1) / duration).toFixed(6)
-    const start = zd.startTime
+    const start = Math.max(0.1, zd.startTime)
     const end = zd.endTime
 
     filters.push(
       `scale=w='if(between(t,${start},${end}),min(iw*(1+(t-${start})*${rate}),iw*${factor}),iw)':h='if(between(t,${start},${end}),min(ih*(1+(t-${start})*${rate}),ih*${factor}),ih)':eval=frame`,
-      `crop=w='if(between(t,${start},${end}),iw/min(1+(t-${start})*${rate},${factor}),iw)':h='if(between(t,${start},${end}),ih/min(1+(t-${start})*${rate},${factor}),ih)':eval=frame`,
+      `crop=w=iw:h=ih:x='(in_w-out_w)/2':y='(in_h-out_h)/2'`,
     )
   }
   return filters

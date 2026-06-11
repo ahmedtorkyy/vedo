@@ -122,6 +122,8 @@ self.onmessage = async (e: MessageEvent) => {
           if (clip.muted) args.push('-af', 'volume=0')
           args.push(normName)
           await instance.exec(args)
+          const normData = await instance.readFile(normName) as Uint8Array
+          await writeOpfsFile(projectId, normName, normData)
           await instance.deleteFile(clip.name).catch(() => {})
           normalizedNames.push(normName)
         }

@@ -70,6 +70,13 @@ export function SlotB({ projectId, onPlayClip, onConcatNeeded }: SlotBProps) {
       } catch {
         // file may not exist
       }
+      if (clip.normalizedOpfsFilename) {
+        try {
+          await ProjectStorage.deleteFile(projectId, clip.normalizedOpfsFilename)
+        } catch {
+          // file may not exist
+        }
+      }
     }
     AudioOrchestrator.getInstance().unregisterClipChannel(clipId)
     removeUploadProgress(clipId)
