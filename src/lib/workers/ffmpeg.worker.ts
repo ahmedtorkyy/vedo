@@ -8,19 +8,18 @@ const MEMFS_LIMIT_BYTES = 1.5 * 1024 * 1024 * 1024
 
 const LATIN_FONT_FILENAME = 'noto-sans.ttf'
 const ARABIC_FONT_FILENAME = 'noto-sans-arabic.ttf'
-const LATIN_FONT_URL = 'https://cdn.jsdelivr.net/npm/@fontsource/noto-sans@5.0.18/files/noto-sans-latin-400-normal.ttf'
-const ARABIC_FONT_URL = 'https://cdn.jsdelivr.net/npm/@fontsource/noto-sans-arabic@5.0.16/files/noto-sans-arabic-arabic-400-normal.ttf'
+const FONT_BASE = '/fonts'
 let cachedFontLatin: Uint8Array | null = null
 let cachedFontArabic: Uint8Array | null = null
 
 async function ensureFonts(): Promise<void> {
   if (!cachedFontLatin) {
-    const resp = await fetch(LATIN_FONT_URL)
+    const resp = await fetch(`${FONT_BASE}/NotoSans-Regular.ttf`)
     if (!resp.ok) throw new Error(`Latin font download failed: ${resp.status}`)
     cachedFontLatin = new Uint8Array(await resp.arrayBuffer())
   }
   if (!cachedFontArabic) {
-    const resp = await fetch(ARABIC_FONT_URL)
+    const resp = await fetch(`${FONT_BASE}/NotoSansArabic-Regular.ttf`)
     if (!resp.ok) throw new Error(`Arabic font download failed: ${resp.status}`)
     cachedFontArabic = new Uint8Array(await resp.arrayBuffer())
   }
