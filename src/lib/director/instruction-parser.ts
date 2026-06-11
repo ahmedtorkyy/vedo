@@ -155,7 +155,7 @@ const CONTENT_REF_STOPWORDS = new Set([
 
 const CAPTION_PATTERNS: { regex: RegExp; value: boolean }[] = [
   { regex: /\b(?:captions?\s+on|subtitles?\s+on|add\s+captions?|include\s+subtitles?)\b/i, value: true },
-  { regex: /\b(?:captions?\s+off|subtitles?\s+off|no\s+captions?|remove\s+captions?)\b/i, value: false },
+  { regex: /\b(?:captions?\s+off|subtitles?\s+off|no\s+captions?|no\s+subtitles?|remove\s+captions?)\b/i, value: false },
   { regex: /\b(?:always\s+show\s+captions?|forced\s+captions?)\b/i, value: true },
 ]
 

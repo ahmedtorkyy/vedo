@@ -1,9 +1,9 @@
 import { describe, it, expect } from 'vitest'
 import { splitRegionAcrossClips, globalToLocal, createEditPlan } from './edit-planner'
 import { parseInstructions } from './instruction-parser'
-import { matchKeyword } from './overlay-engine'
+import { matchKeyword, findCandidateSlots, assignSlotsToOverlays, determinePlacement, determineOverlayDecisions } from './overlay-engine'
 import { analyzeContent, detectHooks } from './content-analyzer'
-import type { ContentAnalysis } from './types'
+import type { ContentAnalysis, StyleProfile, InstructionOverrides } from './types'
 import type { RetentionAnalysis } from './retention-engine'
 
 const CLIPS = [
@@ -183,6 +183,230 @@ describe('parseInstructions with English', () => {
   it('detects no overlays', () => {
     const result = parseInstructions('no overlays please')
     expect(result.overlayFrequency).toBe('rare')
+  })
+})
+
+// --- Parser vocabulary: platform, aspect, zoom-targets, multicam ---
+describe('parseInstructions platform and aspect', () => {
+  it('detects youtube platform', () => {
+    expect(parseInstructions('edit this for youtube').platformPreset).toBe('youtube')
+  })
+
+  it('detects tiktok platform', () => {
+    expect(parseInstructions('upload to tiktok').platformPreset).toBe('tiktok')
+  })
+
+  it('detects instagram reels', () => {
+    expect(parseInstructions('make this for instagram').platformPreset).toBe('instagram')
+  })
+
+  it('detects vertical aspect', () => {
+    expect(parseInstructions('vertical format').aspectRatio).toBe('9:16')
+  })
+
+  it('detects square aspect', () => {
+    expect(parseInstructions('make it square').aspectRatio).toBe('1:1')
+  })
+
+  it('detects landscape aspect', () => {
+    expect(parseInstructions('horizontal video').aspectRatio).toBe('16:9')
+  })
+})
+
+describe('parseInstructions zoom targets', () => {
+  it('detects reveal target', () => {
+    const result = parseInstructions('zoom on reveal')
+    expect(result.zoomTargets).toContain('reveal')
+  })
+
+  it('detects reaction target', () => {
+    const result = parseInstructions('zoom on reactions')
+    expect(result.zoomTargets).toContain('reaction')
+  })
+
+  it('detects product target', () => {
+    const result = parseInstructions('zoom on product')
+    expect(result.zoomTargets).toContain('product')
+  })
+
+  it('detects demo target with when I show', () => {
+    const result = parseInstructions('zoom when I show the feature')
+    expect(result.zoomTargets).toContain('demo')
+  })
+
+  it('detects face target', () => {
+    const result = parseInstructions('zoom on face')
+    expect(result.zoomTargets).toContain('face')
+  })
+
+  it('detects detail target', () => {
+    const result = parseInstructions('zoom on detail')
+    expect(result.zoomTargets).toContain('detail')
+  })
+})
+
+describe('parseInstructions multicam', () => {
+  it('detects multicam', () => {
+    expect(parseInstructions('use multicam editing').multicam).toBe(true)
+  })
+
+  it('detects multi-angle', () => {
+    expect(parseInstructions('multi-angle recording').multicam).toBe(true)
+  })
+})
+
+describe('parseInstructions captions', () => {
+  it('detects captions on', () => {
+    expect(parseInstructions('add captions').captionsEnabled).toBe(true)
+  })
+
+  it('detects subtitles off', () => {
+    expect(parseInstructions('no subtitles').captionsEnabled).toBe(false)
+  })
+
+  it('detects forced captions', () => {
+    expect(parseInstructions('always show captions').captionsEnabled).toBe(true)
+  })
+})
+
+describe('parseInstructions audio directives', () => {
+  it('detects background music', () => {
+    expect(parseInstructions('add background music').audioDirectives).toContain('background-music')
+  })
+
+  it('detects voiceover', () => {
+    expect(parseInstructions('voiceover narration').audioDirectives).toContain('voiceover')
+  })
+
+  it('detects ambient sound', () => {
+    expect(parseInstructions('ambient sound').audioDirectives).toContain('ambient')
+  })
+
+  it('detects soundtrack directive', () => {
+    expect(parseInstructions('add a soundtrack').audioDirectives).toContain('soundtrack')
+  })
+})
+
+describe('parseInstructions speed directives', () => {
+  it('detects 2x speed', () => {
+    expect(parseInstructions('2x speed').speedDirective).toBe(2)
+  })
+
+  it('detects speed up', () => {
+    expect(parseInstructions('speed up the video').speedDirective).toBe(1.25)
+  })
+
+  it('detects slow down', () => {
+    expect(parseInstructions('slow down this part').speedDirective).toBe(0.75)
+  })
+
+  it('detects double speed', () => {
+    expect(parseInstructions('double speed').speedDirective).toBe(2)
+  })
+})
+
+describe('parseInstructions target duration', () => {
+  it('detects under 30 seconds', () => {
+    expect(parseInstructions('under 30 seconds').targetDuration).toBe(30)
+  })
+
+  it('detects make it 60 seconds', () => {
+    expect(parseInstructions('make it 60 seconds').targetDuration).toBe(60)
+  })
+
+  it('detects max 2 minutes', () => {
+    expect(parseInstructions('max 2 minutes').targetDuration).toBe(120)
+  })
+
+  it('detects target 45 seconds', () => {
+    expect(parseInstructions('target 45 seconds').targetDuration).toBe(45)
+  })
+
+  it('returns null when no duration mentioned', () => {
+    expect(parseInstructions('make it dynamic and fast').targetDuration).toBeNull()
+  })
+})
+
+describe('parseInstructions safe-frame center', () => {
+  it('detects my face always centered', () => {
+    const result = parseInstructions('keep my face always centered')
+    expect(result.safeFrameCenter).toBe(true)
+  })
+
+  it('detects always center', () => {
+    const result = parseInstructions('always center the subject')
+    expect(result.safeFrameCenter).toBe(true)
+  })
+
+  it('does not trigger on bare face', () => {
+    const result = parseInstructions('zoom on face')
+    expect(result.safeFrameCenter).toBeNull()
+  })
+})
+
+describe('parseInstructions negation', () => {
+  it('negates transitions when saying do not use transitions', () => {
+    const result = parseInstructions('do not use transitions')
+    expect(result.transitions).toBe('minimal')
+  })
+
+  it('negates zoom when saying no zoom', () => {
+    const result = parseInstructions('no zoom please')
+    expect(result.zoom).toBe('soft')
+  })
+})
+
+describe('parseInstructions content references', () => {
+  it('extracts content reference from remove the part about', () => {
+    const result = parseInstructions('remove the part about the pricing')
+    expect(result.contentReferences.length).toBeGreaterThanOrEqual(1)
+    expect(result.contentReferences[0].toLowerCase()).toContain('pricing')
+  })
+
+  it('extracts content reference from cut the section on', () => {
+    const result = parseInstructions('cut the section on the introduction')
+    expect(result.contentReferences.length).toBeGreaterThanOrEqual(1)
+    expect(result.contentReferences[0].toLowerCase()).toContain('introduction')
+  })
+
+  it('extracts content reference from skip the outro', () => {
+    const result = parseInstructions('skip the outro segment')
+    expect(result.contentReferences.length).toBeGreaterThanOrEqual(1)
+    expect(result.contentReferences[0].toLowerCase()).toContain('outro')
+  })
+
+  it('does not extract bare stopwords as references', () => {
+    const result = parseInstructions('remove the part about the')
+    expect(result.contentReferences.length).toBe(0)
+  })
+
+  it('extracts keep only references', () => {
+    const result = parseInstructions('keep only the review section')
+    expect(result.contentReferences.length).toBeGreaterThanOrEqual(1)
+    expect(result.contentReferences[0].toLowerCase()).toContain('review')
+  })
+})
+
+describe('parseInstructions jumpCuts', () => {
+  it('detects jump cuts', () => {
+    expect(parseInstructions('jump cuts').jumpCuts).toBe(true)
+  })
+
+  it('detects no dissolve as jump cuts', () => {
+    expect(parseInstructions('no dissolve').jumpCuts).toBe(true)
+  })
+
+  it('detects straight cut as jump cuts', () => {
+    expect(parseInstructions('straight cut').jumpCuts).toBe(true)
+  })
+
+  it('detects fast cuts as jump cuts', () => {
+    expect(parseInstructions('fast cuts please').jumpCuts).toBe(true)
+  })
+
+  it('does not set jumpCuts from bare cut in content-ref context', () => {
+    const result = parseInstructions('cut the part about pricing')
+    expect(result.jumpCuts).toBeNull()
   })
 })
 
@@ -438,5 +662,274 @@ describe('analyzeContent end-to-end', () => {
   it('detects conclusion structure', () => {
     expect(result.structure.conclusion).not.toBeNull()
     expect(result.structure.conclusion!.start).toBeGreaterThanOrEqual(17)
+  })
+})
+
+// --- Overlay engine: findCandidateSlots ---
+describe('findCandidateSlots', () => {
+  const segments = [
+    { start: 0, end: 2.5, text: 'welcome to the show' },
+    { start: 2.5, end: 3, text: 'quick transition here' },
+    { start: 3.5, end: 8, text: 'first part of the long explanation section here' },
+    { start: 8, end: 12, text: 'second part continuing the long stretch of content' },
+    { start: 14, end: 15.5, text: 'thanks for watching everyone' },
+  ]
+
+  const contentAnalysis: ContentAnalysis = {
+    topic: 'Tech', category: 'tech-review', keywords: [],
+    structure: { hook: null, setup: null, mainContent: null, conclusion: null },
+    importantMoments: [
+      { time: 3, description: 'Product reveal', confidence: 0.9 },
+      { time: 14, description: 'Key insight', confidence: 0.6 },
+    ],
+    emotionalMoments: [],
+    keySubjects: [], keyObjects: [],
+  }
+
+  it('creates slots for important moments with high confidence priority', () => {
+    const slots = findCandidateSlots(segments, contentAnalysis, 20)
+    const important = slots.filter((s) => s.source === 'important-moment')
+    expect(important.length).toBeGreaterThanOrEqual(2)
+    expect(important[0].priority).toBeGreaterThanOrEqual(15)
+  })
+
+  it('creates jump-cut slots between close segments', () => {
+    const slots = findCandidateSlots(segments, contentAnalysis, 20)
+    const jumpCuts = slots.filter((s) => s.source === 'jump-cut')
+    expect(jumpCuts.length).toBeGreaterThanOrEqual(1)
+  })
+
+  it('creates talking-stretch slots for long segments', () => {
+    const slots = findCandidateSlots(segments, contentAnalysis, 20)
+    const talking = slots.filter((s) => s.source === 'talking-stretch')
+    expect(talking.length).toBeGreaterThanOrEqual(1)
+  })
+
+  it('sorts slots by descending priority', () => {
+    const slots = findCandidateSlots(segments, contentAnalysis, 20)
+    for (let i = 1; i < slots.length; i++) {
+      expect(slots[i].priority).toBeLessThanOrEqual(slots[i - 1].priority)
+    }
+  })
+
+  it('clamps slot times to timeline duration', () => {
+    const slots = findCandidateSlots(segments, contentAnalysis, 10)
+    for (const s of slots) {
+      expect(s.start).toBeGreaterThanOrEqual(0)
+      expect(s.end).toBeLessThanOrEqual(10)
+    }
+  })
+})
+
+// --- Overlay engine: assignSlotsToOverlays ---
+describe('assignSlotsToOverlays', () => {
+  const segments = [
+    { start: 0, end: 2, text: 'welcome to the show' },
+    { start: 2, end: 4, text: 'today we talk about tech' },
+    { start: 4.5, end: 6, text: 'this is amazing stuff' },
+    { start: 8, end: 12, text: 'let me explain how it works' },
+    { start: 12, end: 14, text: 'thanks for watching' },
+  ]
+
+  const contentAnalysis: ContentAnalysis = {
+    topic: 'Tech', category: 'tech-review', keywords: [],
+    structure: { hook: null, setup: null, mainContent: null, conclusion: null },
+    importantMoments: [{ time: 3, description: 'Reveal', confidence: 0.9 }],
+    emotionalMoments: [], keySubjects: [], keyObjects: [],
+  }
+
+  const slots = findCandidateSlots(segments, contentAnalysis, 15)
+
+  it('assigns overlays to best available slots', () => {
+    const assignments = assignSlotsToOverlays(
+      slots,
+      [{ id: 'ov1', fileName: 'demo.mp4', duration: 10, index: 0, totalOverlays: 1 }],
+      segments, contentAnalysis, 15,
+    )
+    expect(assignments.length).toBeGreaterThanOrEqual(1)
+    expect(assignments[0].clipId).toBe('ov1')
+    expect(assignments[0].startTime).toBeGreaterThanOrEqual(0)
+    expect(assignments[0].endTime).toBeGreaterThan(assignments[0].startTime)
+  })
+
+  it('trims overlay to max 10s duration', () => {
+    const assignments = assignSlotsToOverlays(
+      [slots[0]],
+      [{ id: 'ov1', fileName: 'long.mp4', duration: 30, index: 0, totalOverlays: 1 }],
+      segments, contentAnalysis, 15,
+    )
+    const dur = assignments[0].endTime - assignments[0].startTime
+    expect(dur).toBeLessThanOrEqual(10)
+  })
+
+  it('provides fallback when no slot fits', () => {
+    const assignments = assignSlotsToOverlays(
+      [],
+      [{ id: 'ov1', fileName: 'demo.mp4', duration: 5, index: 0, totalOverlays: 1 }],
+      segments, contentAnalysis, 15,
+    )
+    expect(assignments.length).toBeGreaterThanOrEqual(1)
+    expect(assignments[0].confidence).toBeCloseTo(0.3)
+  })
+
+  it('gives keyword bonus for matching transcript', () => {
+    const assignmentsMatch = assignSlotsToOverlays(
+      slots,
+      [{ id: 'ov1', fileName: 'tech-graphic.mp4', duration: 10, index: 0, totalOverlays: 1 }],
+      segments, contentAnalysis, 15,
+    )
+    const assignmentsNoMatch = assignSlotsToOverlays(
+      slots,
+      [{ id: 'ov1', fileName: 'random.mp4', duration: 10, index: 0, totalOverlays: 1 }],
+      segments, contentAnalysis, 15,
+    )
+    expect(assignmentsNoMatch.length).toBeGreaterThanOrEqual(1)
+    expect(assignmentsMatch.length).toBeGreaterThanOrEqual(1)
+  })
+
+  it('assigns multiple overlays without overlapping', () => {
+    const multiSegments = [
+      { start: 0, end: 2, text: 'welcome' },
+      { start: 2.3, end: 4, text: 'tech talk' },
+      { start: 5, end: 9, text: 'long talking stretch about feature number one' },
+      { start: 11, end: 13, text: 'second long stretch about feature' },
+    ]
+    const analysis: ContentAnalysis = {
+      topic: 'Tech', category: 'tech-review', keywords: [],
+      structure: { hook: null, setup: null, mainContent: null, conclusion: null },
+      importantMoments: [
+        { time: 3, description: 'Reveal', confidence: 0.9 },
+        { time: 12, description: 'Wrap', confidence: 0.7 },
+      ],
+      emotionalMoments: [], keySubjects: [], keyObjects: [],
+    }
+    const multiSlots = findCandidateSlots(multiSegments, analysis, 14)
+    const assignments = assignSlotsToOverlays(
+      multiSlots,
+      [
+        { id: 'ov1', fileName: 'a.mp4', duration: 8, index: 0, totalOverlays: 2 },
+        { id: 'ov2', fileName: 'b.mp4', duration: 8, index: 1, totalOverlays: 2 },
+      ],
+      multiSegments, analysis, 14,
+    )
+    for (let i = 0; i < assignments.length; i++) {
+      for (let j = i + 1; j < assignments.length; j++) {
+        const a = assignments[i]
+        const b = assignments[j]
+        const overlap = a.startTime < b.endTime && a.endTime > b.startTime
+        expect(overlap).toBe(false)
+      }
+    }
+  })
+})
+
+// --- Overlay engine: determinePlacement ---
+describe('determinePlacement', () => {
+  const baseContent: ContentAnalysis = {
+    topic: '', category: 'tech-review', keywords: [],
+    structure: { hook: null, setup: null, mainContent: null, conclusion: null },
+    importantMoments: [], emotionalMoments: [], keySubjects: [], keyObjects: [],
+  }
+
+  const baseStyle: StyleProfile = {
+    zoom: 'dynamic', transitions: 'dynamic', effects: 'balanced',
+    pacing: 'moderate', overlayFrequency: 'moderate', jumpCuts: false,
+    motionIntensity: 0.5, transitionPreference: 'dynamic',
+  }
+
+  const noOverrides: InstructionOverrides = {
+    zoom: null, transitions: null, pacing: null, overlayFrequency: null,
+    effects: null, framingStyle: null, visualEffects: [],
+    jumpCuts: null, platformPreset: null, aspectRatio: null,
+    zoomTargets: [], multicam: null, contentReferences: [],
+    captionsEnabled: null, audioDirectives: [], speedDirective: null,
+    targetDuration: null, safeFrameCenter: null,
+    parsedDirectives: [], unmatchedPhrases: [],
+  }
+
+  it('returns pip for close-up framing', () => {
+    const result = determinePlacement(baseContent, baseStyle, { ...noOverrides, framingStyle: 'close-up' })
+    expect(result).toBe('pip')
+  })
+
+  it('returns center for wide framing', () => {
+    const result = determinePlacement(baseContent, baseStyle, { ...noOverrides, framingStyle: 'wide' })
+    expect(result).toBe('center')
+  })
+
+  it('returns right for medium framing', () => {
+    const result = determinePlacement(baseContent, baseStyle, { ...noOverrides, framingStyle: 'medium' })
+    expect(result).toBe('right')
+  })
+
+  it('returns fullscreen for gaming category', () => {
+    const gamingContent = { ...baseContent, category: 'gaming' }
+    const result = determinePlacement(gamingContent, baseStyle, noOverrides)
+    expect(result).toBe('fullscreen')
+  })
+})
+
+// --- Overlay engine: determineOverlayDecisions integration ---
+describe('determineOverlayDecisions', () => {
+  const segments = [
+    { start: 0, end: 2, text: 'welcome' },
+    { start: 2, end: 5, text: 'tech talk today' },
+    { start: 5.3, end: 8, text: 'amazing demo here' },
+    { start: 10, end: 14, text: 'long talking stretch about features' },
+    { start: 14, end: 16, text: 'thanks' },
+  ]
+
+  const contentAnalysis: ContentAnalysis = {
+    topic: 'Tech', category: 'tech-review', keywords: [],
+    structure: { hook: null, setup: null, mainContent: null, conclusion: null },
+    importantMoments: [{ time: 6, description: 'Demo', confidence: 0.8 }],
+    emotionalMoments: [], keySubjects: [], keyObjects: [],
+  }
+
+  const style: StyleProfile = {
+    zoom: 'dynamic', transitions: 'dynamic', effects: 'balanced',
+    pacing: 'moderate', overlayFrequency: 'moderate', jumpCuts: false,
+    motionIntensity: 0.5, transitionPreference: 'dynamic',
+  }
+
+  const overrides: InstructionOverrides = {
+    zoom: null, transitions: null, pacing: null, overlayFrequency: null,
+    effects: null, framingStyle: null, visualEffects: [],
+    jumpCuts: null, platformPreset: null, aspectRatio: null,
+    zoomTargets: [], multicam: null, contentReferences: [],
+    captionsEnabled: null, audioDirectives: [], speedDirective: null,
+    targetDuration: null, safeFrameCenter: null,
+    parsedDirectives: [], unmatchedPhrases: [],
+  }
+
+  it('produces overlay decisions with correct structure', () => {
+    const decisions = determineOverlayDecisions({
+      overlayClip: { id: 'ov1', fileName: 'demo.mp4', duration: 10 },
+      index: 0, totalOverlays: 1,
+      mainClips: [{ id: 'c1', fileName: 'main.mp4', duration: 16, slot: 'A' }],
+      contentAnalysis, segments, timelineDuration: 16, style, overrides,
+      usedSlots: [],
+    })
+    expect(decisions.length).toBeGreaterThanOrEqual(1)
+    expect(decisions[0].overlayClipId).toBe('ov1')
+    expect(typeof decisions[0].startTime).toBe('number')
+    expect(typeof decisions[0].endTime).toBe('number')
+    expect(['center', 'left', 'right', 'pip', 'fullscreen']).toContain(decisions[0].placement)
+    expect(decisions[0].scale).toBeGreaterThan(0)
+    expect(decisions[0].opacity).toBeGreaterThan(0)
+    expect(decisions[0].reason).toBeTruthy()
+  })
+
+  it('creates fallback decision when no slots found', () => {
+    const decisions = determineOverlayDecisions({
+      overlayClip: { id: 'ov1', fileName: 'demo.mp4', duration: 8 },
+      index: 0, totalOverlays: 1,
+      mainClips: [{ id: 'c1', fileName: 'main.mp4', duration: 10, slot: 'A' }],
+      contentAnalysis: { ...contentAnalysis, importantMoments: [] },
+      segments: [], timelineDuration: 10, style, overrides,
+      usedSlots: [],
+    })
+    expect(decisions.length).toBeGreaterThanOrEqual(1)
+    expect(decisions[0].reason).toContain('Fallback')
   })
 })

@@ -58,7 +58,7 @@ export function matchKeyword(text: string, keyword: string): boolean {
   ).test(text)
 }
 
-function findCandidateSlots(
+export function findCandidateSlots(
   segments: { start: number; end: number; text: string }[],
   contentAnalysis: ContentAnalysis,
   timelineDuration: number,
@@ -143,7 +143,7 @@ function calculateKenBurns(
   return undefined
 }
 
-function assignSlotsToOverlays(
+export function assignSlotsToOverlays(
   slots: CandidateSlot[],
   overlayClips: { id: string; fileName: string; duration: number; index: number; totalOverlays: number }[],
   segments: { start: number; end: number; text: string }[],
@@ -213,7 +213,7 @@ function assignSlotsToOverlays(
   return assignments
 }
 
-function determinePlacement(
+export function determinePlacement(
   contentAnalysis: ContentAnalysis,
   style: StyleProfile,
   overrides: InstructionOverrides,
