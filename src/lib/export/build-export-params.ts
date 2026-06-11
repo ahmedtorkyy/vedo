@@ -94,21 +94,3 @@ export function buildCodecParams(options: ExportOptions): ExportCodecParams {
   }
 }
 
-export function buildFilterChain(options: ExportOptions): string[] {
-  const filters: string[] = []
-  const dims = QUALITY_DIMS[options.quality]
-
-  if (options.platform === 'tiktok' || options.platform === 'reels' || options.platform === 'shorts') {
-    const safeW = Math.round(1920 * 16 / 9)
-    filters.push(`scale=w=${safeW}:h=1920`)
-    filters.push(`crop=w=1080:h=1920:x='(in_w-out_w)/2':y=0`)
-  } else if (options.platform === 'youtube') {
-    filters.push(`scale=w=${dims.width}:h=${dims.height}:force_original_aspect_ratio=decrease`)
-    filters.push(`pad=w=${dims.width}:h=${dims.height}:x='(ow-iw)/2':y='(oh-ih)/2':color=black`)
-  } else {
-    filters.push(`scale=w=${dims.width}:h=${dims.height}:force_original_aspect_ratio=decrease`)
-    filters.push(`pad=w=${dims.width}:h=${dims.height}:x='(ow-iw)/2':y='(oh-ih)/2':color=black`)
-  }
-
-  return filters
-}

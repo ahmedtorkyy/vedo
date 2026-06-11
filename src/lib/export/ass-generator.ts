@@ -1,27 +1,54 @@
 import type { TranscriptionSegment } from '../../types'
 
-function escapeDrawtextText(text: string): string {
-  return text
-    .replace(/\\/g, '\\\\')
-    .replace(/'/g, "\\'")
+export interface DrawtextResult {
+  filters: string[]
+  textFiles: { name: string; content: string }[]
 }
 
 export function buildDrawtextFilters(
   segments: SegmentWithTiming[],
   _videoWidth: number,
   videoHeight: number,
-): string[] {
+): DrawtextResult {
   const fontSize = Math.max(16, Math.round(videoHeight / 30))
   const borderWidth = Math.max(1, Math.round(fontSize / 12))
   const yPos = `h-text_h-${Math.round(videoHeight * 0.06)}`
+  const fontFilename = 'noto-sans.ttf'
 
-  return segments
-    .filter((seg) => seg.text.trim() && seg.stitchedEnd > seg.stitchedStart)
-    .map((seg) => {
-      const text = escapeDrawtextText(seg.text.trim())
-      const enable = `between(t,${seg.stitchedStart.toFixed(3)},${seg.stitchedEnd.toFixed(3)})`
-      return `drawtext=text='${text}':fontsize=${fontSize}:fontcolor=white:borderw=${borderWidth}:bordercolor=black:x=(w-text_w)/2:y=${yPos}:enable='${enable}'`
-    })
+  const filters: string[] = []
+  const textFiles: { name: string; content: string }[] = []
+
+  for (let i = 0; i < segments.length; i++) {
+    const seg = segments[i]
+    if (!seg.text.trim() || seg.stitchedEnd <= seg.stitchedStart) continue
+    const enable = `between(t,${seg.stitchedStart.toFixed(3)},${seg.stitchedEnd.toFixed(3)})`
+    const filename = `caption_${i}.txt`
+    filters.push(
+      `drawtext=textfile=${filename}:fontfile=${fontFilename}:fontsize=${fontSize}:fontcolor=white:borderw=${borderWidth}:bordercolor=black:x=(w-text_w)/2:y=${yPos}:enable='${enable}'`
+    )
+    textFiles.push({ name: filename, content: seg.text.trim() })
+  }
+
+  return { filters, textFiles }
+}
+
+export interface SubtitleResult {
+  filter: string
+  assFiles: { name: string; content: string }[]
+}
+
+export function buildSubtitleFilter(
+  clipId: string,
+  segments: SegmentWithTiming[],
+  videoWidth: number,
+  videoHeight: number,
+): SubtitleResult {
+  const assFilename = `subs_${clipId.replace(/[^a-zA-Z0-9._-]/g, '_')}.ass`
+  const content = buildAssContent(segments, videoWidth, videoHeight)
+  return {
+    filter: `subtitles=${assFilename}`,
+    assFiles: [{ name: assFilename, content }],
+  }
 }
 
 export interface SegmentWithTiming extends TranscriptionSegment {

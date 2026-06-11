@@ -9,6 +9,7 @@ export interface ExportOptions {
   format: ExportFormat
   platform: PlatformPreset
   burnCaptions: boolean
+  captionBackend?: 'drawtext' | 'subtitles'
 }
 
 export interface ExportCodecParams {

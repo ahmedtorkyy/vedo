@@ -17,6 +17,8 @@ export interface Clip {
   muted: boolean
   normalizedOpfsFilename?: string
   normalizedMutedState?: boolean
+  videoWidth?: number
+  videoHeight?: number
 }
 
 export interface UndoEntry {

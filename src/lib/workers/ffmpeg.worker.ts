@@ -6,6 +6,19 @@ let ffmpeg: FFmpeg | null = null
 const MEMFS_WARN_BYTES = 256 * 1024 * 1024
 const MEMFS_LIMIT_BYTES = 1.5 * 1024 * 1024 * 1024
 
+const FONT_FILENAME = 'noto-sans.ttf'
+const FONT_URL = 'https://cdn.jsdelivr.net/npm/@fontsource/noto-sans@5.0.18/files/noto-sans-latin-400-normal.ttf'
+let cachedFontData: Uint8Array | null = null
+
+async function getFont(): Promise<Uint8Array> {
+  if (!cachedFontData) {
+    const response = await fetch(FONT_URL)
+    if (!response.ok) throw new Error(`Font download failed: ${response.status}`)
+    cachedFontData = new Uint8Array(await response.arrayBuffer())
+  }
+  return cachedFontData
+}
+
 async function getFFmpeg(): Promise<FFmpeg> {
   if (!ffmpeg) {
     ffmpeg = new FFmpeg()
@@ -249,10 +262,12 @@ self.onmessage = async (e: MessageEvent) => {
   if (type === 'render-clip') {
     try {
       const instance = await getFFmpeg()
-      const { projectId, inputName, outputName, filterComplex, overlayInputNames, codec } = payload as {
+      const { projectId, inputName, outputName, filterComplex, overlayInputNames, codec, textFiles, assFiles } = payload as {
         projectId: string; inputName: string; outputName: string; filterComplex: string
         overlayInputNames?: string[]
         codec?: { videoCodec: string; audioCodec: string; videoParams: string[]; audioParams: string[]; muxer: string }
+        textFiles?: { name: string; content: string }[]
+        assFiles?: { name: string; content: string }[]
       }
 
       instance.on('progress', ({ progress }) => {
@@ -261,6 +276,21 @@ self.onmessage = async (e: MessageEvent) => {
 
       const raw = await readOpfsFile(projectId, inputName)
       await instance.writeFile(inputName, raw)
+
+      if (textFiles) {
+        for (const tf of textFiles) {
+          await instance.writeFile(tf.name, new TextEncoder().encode(tf.content))
+        }
+      }
+
+      if (assFiles) {
+        for (const af of assFiles) {
+          await instance.writeFile(af.name, new TextEncoder().encode(af.content))
+        }
+      }
+
+      const fontData = await getFont()
+      await instance.writeFile(FONT_FILENAME, fontData)
 
       const args = ['-i', inputName]
       const writtenOverlays: string[] = []

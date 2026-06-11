@@ -22,6 +22,28 @@ export function useFileUpload() {
   const setUploadProgress = useClipStore((s) => s.setUploadProgress)
   const addClip = useClipStore((s) => s.addClip)
 
+  function getVideoDimensions(file: File): Promise<{ width: number; height: number; duration: number }> {
+    return new Promise((resolve) => {
+      const video = document.createElement('video')
+      video.preload = 'metadata'
+      video.onloadedmetadata = () => {
+        resolve({
+          width: video.videoWidth || 1920,
+          height: video.videoHeight || 1080,
+          duration: video.duration || 0,
+        })
+        URL.revokeObjectURL(video.src)
+        video.remove()
+      }
+      video.onerror = () => {
+        resolve({ width: 1920, height: 1080, duration: 0 })
+        URL.revokeObjectURL(video.src)
+        video.remove()
+      }
+      video.src = URL.createObjectURL(file)
+    })
+  }
+
   const uploadFiles = useCallback(async (options: UploadOptions) => {
     const { projectId, slot, files, onFileStart, onProgress, onFileComplete, onAllComplete } = options
     const audioMatrix = AudioOrchestrator.getInstance()
@@ -85,14 +107,17 @@ export function useFileUpload() {
         audioMatrix.registerClipChannel(clipId)
         projectTotal += file.size
 
+        const dims = await getVideoDimensions(file)
         addClip(projectId, slot, {
           id: clipId,
           fileName: file.name,
           fileSize: file.size,
           filePath: opfsPath,
           opfsFilename: safeName,
-          duration: 0,
-          muted: false
+          duration: dims.duration,
+          muted: false,
+          videoWidth: dims.width,
+          videoHeight: dims.height,
         })
 
         onFileComplete?.(file.name)

@@ -1,7 +1,7 @@
 import { describe, it, expect } from 'vitest'
 import { buildKeptIntervals, mapSegmentsThroughOffset, mapSegmentsThroughTrims } from './ass-generator'
 import { buildSrt, buildVtt } from './subtitle-formats'
-import { buildScaleParams, buildCodecParams, getQualityDims, buildFilterChain } from './build-export-params'
+import { buildScaleParams, buildCodecParams, getQualityDims } from './build-export-params'
 import type { TranscriptionSegment } from '../../types'
 
 function seg(start: number, end: number, text = 'hello'): TranscriptionSegment {

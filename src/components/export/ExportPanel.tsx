@@ -56,7 +56,7 @@ export function ExportPanel({ projectId }: ExportPanelProps) {
   }, [renderState.status, announce])
 
   const handleExport = useCallback(() => {
-    const options: ExportOptions = { quality, format, platform, burnCaptions }
+    const options: ExportOptions = { quality, format, platform, burnCaptions, captionBackend: 'drawtext' }
     startExport(options)
     announce(`Starting export: ${quality}, ${format}${platform !== 'none' ? `, ${platform}` : ''}${burnCaptions ? ', with captions' : ''}`)
   }, [quality, format, platform, burnCaptions, startExport, announce])

@@ -3,7 +3,7 @@ import { useDirectorStore } from '../director/director-store'
 import { useClipStore } from '../state/clip-store'
 import { useTranscriptionStore } from '../transcription/transcription-store'
 import { smartCutVideo } from './concat'
-import { buildCodecParams, buildScaleParams, buildDrawtextFilters, mapSegmentsThroughTrims } from '../export'
+import { buildCodecParams, buildScaleParams, buildDrawtextFilters, buildSubtitleFilter, mapSegmentsThroughTrims } from '../export'
 import type { ExportOptions, ExportScaleParams } from '../export'
 
 let worker: Worker | null = null
@@ -275,7 +275,9 @@ export async function exportVideo(projectId: string, options: ExportOptions): Pr
   if (clipsA.length === 0) throw new Error('No clips to render.')
 
   const codec = buildCodecParams(options)
-  const exportScale = buildScaleParams(options, 1920, 1080)
+  const maxWidth = clipsA.reduce((max, c) => Math.max(max, c.videoWidth ?? 1920), 1920)
+  const maxHeight = clipsA.reduce((max, c) => Math.max(max, c.videoHeight ?? 1080), 1080)
+  const exportScale = buildScaleParams(options, maxWidth, maxHeight)
 
   sendProgress('preparing', 0, 'Preparing render pipeline')
 
@@ -303,6 +305,8 @@ export async function exportVideo(projectId: string, options: ExportOptions): Pr
 
     if (needsRender) {
       let captionFilters: string[] | undefined
+      let textFiles: { name: string; content: string }[] | undefined
+      let assFiles: { name: string; content: string }[] | undefined
       if (options.burnCaptions) {
         const transcriptResult = useTranscriptionStore.getState().results[clip.id]
         if (transcriptResult?.status === 'done' && transcriptResult.segments.length > 0) {
@@ -314,7 +318,15 @@ export async function exportVideo(projectId: string, options: ExportOptions): Pr
             clip.duration,
           )
           if (mappedSegments.length > 0) {
-            captionFilters = buildDrawtextFilters(mappedSegments, exportScale.width, exportScale.height)
+            if (options.captionBackend === 'subtitles') {
+              const subResult = buildSubtitleFilter(clip.id, mappedSegments, exportScale.width, exportScale.height)
+              captionFilters = [subResult.filter]
+              assFiles = subResult.assFiles
+            } else {
+              const dtResult = buildDrawtextFilters(mappedSegments, exportScale.width, exportScale.height)
+              captionFilters = dtResult.filters
+              textFiles = dtResult.textFiles
+            }
           }
         }
       }
@@ -341,6 +353,8 @@ export async function exportVideo(projectId: string, options: ExportOptions): Pr
             filterComplex,
             overlayInputNames,
             codec,
+            textFiles,
+            assFiles,
           },
         })
 
