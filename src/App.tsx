@@ -146,7 +146,7 @@ function Workspace({ onConcatNeeded }: { onConcatNeeded?: (projectId: string) =>
           )}
         </div>
         <div role="tabpanel" id="panel-slotb" aria-label="Overlays tab panel" hidden={activeTab !== 'slotb'}>
-          {activeTab === 'slotb' && <SlotB projectId={currentProjectId} />}
+          {activeTab === 'slotb' && <SlotB projectId={currentProjectId} onConcatNeeded={handleConcatNeeded} />}
         </div>
         <div role="tabpanel" id="panel-preview" aria-label="Preview tab panel" hidden={activeTab !== 'preview'}>
           {activeTab === 'preview' && (

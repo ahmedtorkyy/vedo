@@ -15,6 +15,8 @@ export interface Clip {
   opfsFilename: string
   duration: number
   muted: boolean
+  normalizedOpfsFilename?: string
+  normalizedMutedState?: boolean
 }
 
 export interface UndoEntry {

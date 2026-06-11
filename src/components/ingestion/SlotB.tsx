@@ -11,9 +11,10 @@ import { UploadProgress } from './UploadProgress'
 interface SlotBProps {
   projectId: string
   onPlayClip?: (clipId: string) => void
+  onConcatNeeded?: () => void
 }
 
-export function SlotB({ projectId, onPlayClip }: SlotBProps) {
+export function SlotB({ projectId, onPlayClip, onConcatNeeded }: SlotBProps) {
   const clips = useClipStore((s) => s.getSlotClips(projectId, 'B'))
   const uploads = useClipStore((s) => s.uploads)
   const removeClip = useClipStore((s) => s.removeClip)
@@ -58,7 +59,8 @@ export function SlotB({ projectId, onPlayClip }: SlotBProps) {
     toggleMute(projectId, 'B', clipId)
     const clip = clips.find((c) => c.id === clipId)
     announce(clip?.muted ? 'Overlay unmuted' : 'Overlay muted')
-  }, [projectId, clips, toggleMute, announce])
+    onConcatNeeded?.()
+  }, [projectId, clips, toggleMute, announce, onConcatNeeded])
 
   const handleDelete = useCallback(async (clipId: string) => {
     const clip = clips.find((c) => c.id === clipId)

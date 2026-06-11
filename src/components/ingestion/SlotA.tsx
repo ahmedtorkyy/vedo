@@ -65,7 +65,8 @@ export function SlotA({ projectId, onPlayClip, onConcatNeeded }: SlotAProps) {
     toggleMute(projectId, 'A', clipId)
     const clip = clips.find((c) => c.id === clipId)
     announce(clip?.muted ? 'Clip unmuted' : 'Clip muted')
-  }, [projectId, clips, toggleMute, announce])
+    onConcatNeeded?.()
+  }, [projectId, clips, toggleMute, announce, onConcatNeeded])
 
   const handleDelete = useCallback(async (clipId: string) => {
     const clip = clips.find((c) => c.id === clipId)

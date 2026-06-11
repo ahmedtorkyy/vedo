@@ -125,7 +125,7 @@ export async function loadFFmpeg(): Promise<void> {
 
 export async function concatClips(
   projectId: string,
-  clips: Pick<Clip, 'opfsFilename' | 'muted'>[],
+  clips: Clip[],
 ): Promise<string> {
   if (isRunning) {
     throw new Error('A concat operation is already in progress')
@@ -134,15 +134,32 @@ export async function concatClips(
 
   useClipStore.getState().setConcatStatus('concatenating')
 
+  const store = useClipStore.getState()
+  const workerClips = clips.map((c) => {
+    if (c.normalizedOpfsFilename && c.normalizedMutedState === c.muted) {
+      return { name: c.opfsFilename, muted: c.muted, normalizedName: c.normalizedOpfsFilename }
+    }
+    return { name: c.opfsFilename, muted: c.muted }
+  })
+
   return new Promise<string>((resolve, reject) => {
     pendingConcat = { resolve, reject }
     getWorker().postMessage({
       type: 'concat',
       payload: {
         projectId,
-        clips: clips.map((c) => ({ name: c.opfsFilename, muted: c.muted })),
+        clips: workerClips,
       },
     })
+  }).then((outputFilename: string) => {
+    for (const clip of clips) {
+      if (!clip.normalizedOpfsFilename || clip.normalizedMutedState !== clip.muted) {
+        const normName = `_norm_${clip.opfsFilename}`
+        store.updateClip(projectId, 'A', clip.id, { normalizedOpfsFilename: normName, normalizedMutedState: clip.muted })
+        store.updateClip(projectId, 'B', clip.id, { normalizedOpfsFilename: normName, normalizedMutedState: clip.muted })
+      }
+    }
+    return outputFilename
   })
 }
 

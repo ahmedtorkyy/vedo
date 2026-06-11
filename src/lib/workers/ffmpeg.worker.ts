@@ -81,7 +81,7 @@ self.onmessage = async (e: MessageEvent) => {
   if (type === 'concat') {
     try {
       const instance = await getFFmpeg()
-      const { projectId, clips } = payload as { projectId: string; clips: { name: string; muted?: boolean }[] }
+      const { projectId, clips } = payload as { projectId: string; clips: { name: string; muted?: boolean; normalizedName?: string }[] }
 
       let totalBytes = 0
       for (const clip of clips) {
@@ -106,21 +106,25 @@ self.onmessage = async (e: MessageEvent) => {
         })
       }
 
-      // Re-encode each clip to normalize codecs and apply mute
+      // Re-encode each clip to normalize codecs and apply mute, or use cached normalized file
       const normalizedNames: string[] = []
       for (const clip of clips) {
         if (!clip.name) continue
-        const raw = await readOpfsFile(projectId, clip.name)
-        await instance.writeFile(clip.name, raw)
-
-        const normName = `_norm_${clip.name}`
-        const args = ['-i', clip.name, '-c:v', 'libx264', '-preset', 'fast', '-crf', '23', '-c:a', 'aac', '-b:a', '128k']
-        if (clip.muted) args.push('-af', 'volume=0')
-        args.push(normName)
-        await instance.exec(args)
-
-        await instance.deleteFile(clip.name).catch(() => {})
-        normalizedNames.push(normName)
+        if (clip.normalizedName) {
+          const raw = await readOpfsFile(projectId, clip.normalizedName)
+          await instance.writeFile(clip.normalizedName, raw)
+          normalizedNames.push(clip.normalizedName)
+        } else {
+          const raw = await readOpfsFile(projectId, clip.name)
+          await instance.writeFile(clip.name, raw)
+          const normName = `_norm_${clip.name}`
+          const args = ['-i', clip.name, '-c:v', 'libx264', '-preset', 'fast', '-crf', '23', '-c:a', 'aac', '-b:a', '128k']
+          if (clip.muted) args.push('-af', 'volume=0')
+          args.push(normName)
+          await instance.exec(args)
+          await instance.deleteFile(clip.name).catch(() => {})
+          normalizedNames.push(normName)
+        }
       }
 
       const concatContent = normalizedNames.map((c) => `file '${c}'`).join('\n')

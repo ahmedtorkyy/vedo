@@ -12,6 +12,7 @@ interface ClipState {
   addClip: (projectId: string, slot: 'A' | 'B', clip: Clip) => void;
   removeClip: (projectId: string, slot: 'A' | 'B', clipId: string) => Clip | undefined;
   toggleMute: (projectId: string, slot: 'A' | 'B', clipId: string) => void;
+  updateClip: (projectId: string, slot: 'A' | 'B', clipId: string, updates: Partial<Clip>) => void;
   initUpload: (entry: UploadProgressEntry) => void;
   setUploadProgress: (clipId: string, progress: number, status: UploadProgressEntry['status'], error?: string) => void;
   removeUploadProgress: (clipId: string) => void;
@@ -72,6 +73,20 @@ export const useClipStore = create<ClipState>()(
         const currentProject = state.clips[projectId] || { A: [], B: [] };
         const updatedSlot = currentProject[slot].map((c) => 
           c.id === clipId ? { ...c, muted: !c.muted } : c
+        );
+        return {
+          clips: {
+            ...state.clips,
+            [projectId]: { ...currentProject, [slot]: updatedSlot }
+          }
+        };
+      }),
+
+      updateClip: (projectId, slot, clipId, updates) => set((state) => {
+        const currentProject = state.clips[projectId];
+        if (!currentProject) return {};
+        const updatedSlot = currentProject[slot].map((c) =>
+          c.id === clipId ? { ...c, ...updates } : c
         );
         return {
           clips: {
