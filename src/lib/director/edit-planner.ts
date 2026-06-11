@@ -290,6 +290,22 @@ export function createEditPlan(input: PlannerInput): EditPlan {
 
   const totalInputDuration = mainClips.reduce((sum, c) => sum + c.duration, 0)
 
+  // Safety cap: silence/repetition trimming must never delete (nearly) the
+  // whole video. If planned trims cover 90%+ of the content, drop them and
+  // tell the user why instead of producing an empty export.
+  const plannedTrim = decisions
+    .filter((d) => d.type === 'trim')
+    .reduce((sum, d) => sum + (d.endTime - d.startTime), 0)
+
+  if (totalInputDuration > 0 && plannedTrim >= totalInputDuration * 0.9) {
+    for (let i = decisions.length - 1; i >= 0; i--) {
+      if (decisions[i].type === 'trim') decisions.splice(i, 1)
+    }
+    warnings.push(
+      'Silence removal would delete almost the entire video, so no trims were applied — check the clip audio levels.',
+    )
+  }
+
   const trimmedDuration = decisions
     .filter((d) => d.type === 'trim')
     .reduce((sum, d) => sum + (d.endTime - d.startTime), 0)

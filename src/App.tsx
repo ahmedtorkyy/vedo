@@ -15,6 +15,7 @@ import { useTimelineStore } from './lib/timeline/timeline-store'
 import { AriaAnnouncerProvider, useAriaAnnouncer } from './components/accessibility/AriaAnnouncer'
 import { AudioOrchestrator } from './lib/audio'
 import { saveSessionSnapshot, restoreSession } from './lib/session/session-recovery'
+import { backfillClipMetadata } from './lib/state/clip-backfill'
 
 type WorkspaceTab = 'slota' | 'slotb' | 'preview' | 'transcription' | 'editing' | 'director' | 'timeline' | 'export'
 const workspaceRef = { current: null as HTMLDivElement | null }
@@ -44,6 +45,32 @@ function Workspace({ onConcatNeeded }: { onConcatNeeded?: (projectId: string) =>
   useEffect(() => {
     saveSessionSnapshot()
   }, [currentProjectId])
+
+  // Re-measure metadata for clips whose duration could not be read at upload
+  // time (hidden-tab uploads fall back to duration 0, which disables planning).
+  // Runs on project open and again whenever the tab becomes visible.
+  useEffect(() => {
+    if (!currentProjectId) return
+    let cancelled = false
+
+    const runBackfill = async () => {
+      const updated = await backfillClipMetadata(currentProjectId)
+      if (!cancelled && updated > 0) {
+        announce(`Clip information updated for ${updated} clip${updated > 1 ? 's' : ''}`)
+      }
+    }
+
+    runBackfill()
+
+    const onVisible = () => {
+      if (document.visibilityState === 'visible') runBackfill()
+    }
+    document.addEventListener('visibilitychange', onVisible)
+    return () => {
+      cancelled = true
+      document.removeEventListener('visibilitychange', onVisible)
+    }
+  }, [currentProjectId, announce])
 
   useEffect(() => {
     if (project && workspaceRef.current) {

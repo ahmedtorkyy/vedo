@@ -1278,6 +1278,46 @@ describe('single-clip project planning (regression)', () => {
     expect(overlays[0].endTime).toBeLessThanOrEqual(30)
   })
 
+  it('drops trims and warns when silence removal would delete nearly the whole video', () => {
+    const plan = createEditPlan({
+      projectId: 'p-trim-cap',
+      instructions: '',
+      selectedStyle: 'vlog',
+      clips: [{ id: 'solo', fileName: 'quiet.mp4', duration: 10, slot: 'A' as const }],
+      contentAnalysis: emptyAnalysis,
+      retention: {
+        ...emptyRetention,
+        lowEnergyRegions: [{ start: 0, end: 9.5, duration: 9.5 }],
+      },
+      transcription: [],
+      clipOffsets: undefined,
+    })
+
+    const trims = plan.decisions.filter((d) => d.type === 'trim')
+    expect(trims).toHaveLength(0)
+    expect(plan.warnings.some((w) => w.includes('delete almost the entire video'))).toBe(true)
+  })
+
+  it('keeps normal trims under the safety cap', () => {
+    const plan = createEditPlan({
+      projectId: 'p-trim-normal',
+      instructions: '',
+      selectedStyle: 'vlog',
+      clips: [{ id: 'solo', fileName: 'talk.mp4', duration: 30, slot: 'A' as const }],
+      contentAnalysis: emptyAnalysis,
+      retention: {
+        ...emptyRetention,
+        lowEnergyRegions: [{ start: 5, end: 8, duration: 3 }],
+      },
+      transcription: [],
+      clipOffsets: undefined,
+    })
+
+    const trims = plan.decisions.filter((d) => d.type === 'trim')
+    expect(trims.length).toBeGreaterThanOrEqual(1)
+    expect(plan.warnings.some((w) => w.includes('delete almost the entire video'))).toBe(false)
+  })
+
   it('spreads multiple overlays instead of stacking them on the same slot', () => {
     const plan = createEditPlan({
       projectId: 'p-overlay-spread',
