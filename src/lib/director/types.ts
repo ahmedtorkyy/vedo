@@ -96,6 +96,12 @@ export interface InstructionOverrides {
   speedDirective: number | null
   targetDuration: number | null
   safeFrameCenter: boolean | null
+  zoomCadence: number | null
+  neverRepeatFraming: boolean | null
+  landOnMidMotion: boolean | null
+  landOnMidExpression: boolean | null
+  reactionCutTightness: 'loose' | 'tight' | null
+  explanationCutTightness: 'loose' | 'tight' | null
   parsedDirectives: { type: string; value: string; source: string }[]
   unmatchedPhrases: string[]
 }

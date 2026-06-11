@@ -245,6 +245,172 @@ describe('parseInstructions zoom targets', () => {
   })
 })
 
+describe('parseInstructions zoom patterns', () => {
+  it('detects punch-in as aggressive zoom', () => {
+    expect(parseInstructions('punch in on the product').zoom).toBe('aggressive')
+  })
+
+  it('detects punch-out as aggressive zoom', () => {
+    expect(parseInstructions('punch out for context').zoom).toBe('aggressive')
+  })
+})
+
+describe('parseInstructions glitch fix', () => {
+  it('does not trigger glitch on bare static', () => {
+    const result = parseInstructions('keep the framing static')
+    expect(result.visualEffects).not.toContain('glitch')
+  })
+
+  it('triggers glitch on tv static', () => {
+    const result = parseInstructions('add a tv static overlay')
+    expect(result.visualEffects).toContain('glitch')
+  })
+
+  it('triggers glitch on static effect', () => {
+    const result = parseInstructions('apply a static effect')
+    expect(result.visualEffects).toContain('glitch')
+  })
+
+  it('triggers glitch on static noise', () => {
+    const result = parseInstructions('overlay static noise')
+    expect(result.visualEffects).toContain('glitch')
+  })
+
+  it('triggers on glitch effect directly', () => {
+    const result = parseInstructions('add a glitch effect')
+    expect(result.visualEffects).toContain('glitch')
+  })
+})
+
+describe('parseInstructions multicam extended', () => {
+  it('detects multiple cameras', () => {
+    expect(parseInstructions('record with multiple cameras').multicam).toBe(true)
+  })
+
+  it('detects different distances', () => {
+    expect(parseInstructions('cut between different distances').multicam).toBe(true)
+  })
+
+  it('detects different zoom level each cut', () => {
+    expect(parseInstructions('different zoom level each cut').multicam).toBe(true)
+  })
+})
+
+describe('parseInstructions match cuts', () => {
+  it('detects match cut as jump cuts', () => {
+    expect(parseInstructions('match cut').jumpCuts).toBe(true)
+  })
+
+  it('detects match cuts as jump cuts', () => {
+    expect(parseInstructions('use match cuts').jumpCuts).toBe(true)
+  })
+})
+
+describe('parseInstructions zoom cadence', () => {
+  it('detects every 3 seconds', () => {
+    expect(parseInstructions('zoom every 3 seconds').zoomCadence).toBe(3)
+  })
+
+  it('detects every 2 to 3 seconds', () => {
+    const result = parseInstructions('zoom every 2 to 3 seconds')
+    expect(result.zoomCadence).toBe(2.5)
+  })
+
+  it('returns null when no cadence mentioned', () => {
+    expect(parseInstructions('dynamic zoom').zoomCadence).toBeNull()
+  })
+})
+
+describe('parseInstructions never-repeat-framing', () => {
+  it('detects never repeat framing', () => {
+    expect(parseInstructions('never repeat the same framing').neverRepeatFraming).toBe(true)
+  })
+
+  it('detects vary framing each cut', () => {
+    expect(parseInstructions('vary framing each cut').neverRepeatFraming).toBe(true)
+  })
+
+  it('returns null when not mentioned', () => {
+    expect(parseInstructions('dynamic zoom').neverRepeatFraming).toBeNull()
+  })
+})
+
+describe('parseInstructions land-on-mid-motion', () => {
+  it('detects land on mid motion', () => {
+    expect(parseInstructions('land on mid motion').landOnMidMotion).toBe(true)
+  })
+
+  it('detects land on movement', () => {
+    expect(parseInstructions('land on movement').landOnMidMotion).toBe(true)
+  })
+
+  it('detects capture mid motion', () => {
+    expect(parseInstructions('capture mid-motion').landOnMidMotion).toBe(true)
+  })
+
+  it('returns null when not mentioned', () => {
+    expect(parseInstructions('dynamic zoom').landOnMidMotion).toBeNull()
+  })
+})
+
+describe('parseInstructions land-on-mid-expression', () => {
+  it('detects land on mid expression', () => {
+    expect(parseInstructions('land on mid expression').landOnMidExpression).toBe(true)
+  })
+
+  it('detects hold expressions', () => {
+    expect(parseInstructions('hold expressions').landOnMidExpression).toBe(true)
+  })
+
+  it('returns null when not mentioned', () => {
+    expect(parseInstructions('dynamic zoom').landOnMidExpression).toBeNull()
+  })
+})
+
+describe('parseInstructions reaction-cut-tightness', () => {
+  it('detects tight reaction cuts', () => {
+    expect(parseInstructions('tight react cuts').reactionCutTightness).toBe('tight')
+  })
+
+  it('detects quick cuts on reaction', () => {
+    expect(parseInstructions('quick cuts on reaction').reactionCutTightness).toBe('tight')
+  })
+
+  it('detects loose reaction cuts', () => {
+    expect(parseInstructions('loose react cuts').reactionCutTightness).toBe('loose')
+  })
+
+  it('detects linger on response', () => {
+    expect(parseInstructions('linger on response').reactionCutTightness).toBe('loose')
+  })
+
+  it('returns null when not mentioned', () => {
+    expect(parseInstructions('dynamic zoom').reactionCutTightness).toBeNull()
+  })
+})
+
+describe('parseInstructions explanation-cut-tightness', () => {
+  it('detects tight cut on explain', () => {
+    expect(parseInstructions('tight cut on explain').explanationCutTightness).toBe('tight')
+  })
+
+  it('detects snappy cut to talk', () => {
+    expect(parseInstructions('snappy cut to talk').explanationCutTightness).toBe('tight')
+  })
+
+  it('detects loose cut on explain', () => {
+    expect(parseInstructions('loose cut on explain').explanationCutTightness).toBe('loose')
+  })
+
+  it('detects let them finish', () => {
+    expect(parseInstructions('let them finish the thought').explanationCutTightness).toBe('loose')
+  })
+
+  it('returns null when not mentioned', () => {
+    expect(parseInstructions('dynamic zoom').explanationCutTightness).toBeNull()
+  })
+})
+
 describe('parseInstructions multicam', () => {
   it('detects multicam', () => {
     expect(parseInstructions('use multicam editing').multicam).toBe(true)
@@ -887,6 +1053,9 @@ describe('determinePlacement', () => {
     zoomTargets: [], multicam: null, contentReferences: [],
     captionsEnabled: null, audioDirectives: [], speedDirective: null,
     targetDuration: null, safeFrameCenter: null,
+    zoomCadence: null, neverRepeatFraming: null,
+    landOnMidMotion: null, landOnMidExpression: null,
+    reactionCutTightness: null, explanationCutTightness: null,
     parsedDirectives: [], unmatchedPhrases: [],
   }
 
@@ -942,6 +1111,9 @@ describe('determineOverlayDecisions', () => {
     zoomTargets: [], multicam: null, contentReferences: [],
     captionsEnabled: null, audioDirectives: [], speedDirective: null,
     targetDuration: null, safeFrameCenter: null,
+    zoomCadence: null, neverRepeatFraming: null,
+    landOnMidMotion: null, landOnMidExpression: null,
+    reactionCutTightness: null, explanationCutTightness: null,
     parsedDirectives: [], unmatchedPhrases: [],
   }
 
