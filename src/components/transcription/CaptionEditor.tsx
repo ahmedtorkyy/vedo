@@ -1,7 +1,8 @@
-import { useCallback } from 'react'
+import { useCallback, useMemo, useState } from 'react'
 import { useTranscriptionStore } from '../../lib/transcription'
 import { useAriaAnnouncer } from '../accessibility/AriaAnnouncer'
 import { useClipStore } from '../../lib/state'
+import { computeStitchedOffset } from '../../lib/timeline/compute-offset'
 
 interface CaptionEditorProps {
   clipId: string
@@ -34,31 +35,72 @@ export function CaptionEditor({ clipId, projectId }: CaptionEditorProps) {
   const autoFitTimings = useTranscriptionStore((s) => s.autoFitTimings)
   const { announce } = useAriaAnnouncer()
 
-  const segments = result?.status === 'done' ? result.segments : []
+  const segments = useMemo(() => result?.status === 'done' ? result.segments : [], [result])
+
+  const [draftStart, setDraftStart] = useState<Record<string, string>>({})
+  const [draftEnd, setDraftEnd] = useState<Record<string, string>>({})
 
   const handleTextChange = useCallback((index: number, text: string) => {
     updateSegment(clipId, index, { text })
   }, [clipId, updateSegment])
 
-  const handleStartChange = useCallback((index: number, value: string) => {
-    const start = parseTime(value)
-    if (!isNaN(start)) {
-      const seg = segments[index]
-      if (seg) {
-        updateSegment(clipId, index, { start, end: seg.end })
-      }
-    }
-  }, [clipId, segments, updateSegment])
+  const handleStartDraft = useCallback((index: number, value: string) => {
+    setDraftStart((prev) => ({ ...prev, [`${clipId}-${index}`]: value }))
+  }, [clipId])
 
-  const handleEndChange = useCallback((index: number, value: string) => {
-    const end = parseTime(value)
-    if (!isNaN(end)) {
-      const seg = segments[index]
-      if (seg) {
-        updateSegment(clipId, index, { start: seg.start, end })
+  const handleStartCommit = useCallback((index: number) => {
+    const key = `${clipId}-${index}`
+    const draft = draftStart[key]
+    if (draft !== undefined) {
+      const parsed = parseTime(draft)
+      if (!isNaN(parsed)) {
+        const seg = segments[index]
+        if (seg) {
+          updateSegment(clipId, index, { start: parsed, end: seg.end })
+        }
       }
     }
-  }, [clipId, segments, updateSegment])
+    setDraftStart((prev) => {
+      const next = { ...prev }
+      delete next[key]
+      return next
+    })
+  }, [clipId, segments, draftStart, updateSegment])
+
+  const handleEndDraft = useCallback((index: number, value: string) => {
+    setDraftEnd((prev) => ({ ...prev, [`${clipId}-${index}`]: value }))
+  }, [clipId])
+
+  const handleEndCommit = useCallback((index: number) => {
+    const key = `${clipId}-${index}`
+    const draft = draftEnd[key]
+    if (draft !== undefined) {
+      const parsed = parseTime(draft)
+      if (!isNaN(parsed)) {
+        const seg = segments[index]
+        if (seg) {
+          updateSegment(clipId, index, { start: seg.start, end: parsed })
+        }
+      }
+    }
+    setDraftEnd((prev) => {
+      const next = { ...prev }
+      delete next[key]
+      return next
+    })
+  }, [clipId, segments, draftEnd, updateSegment])
+
+  const handleStartKeyDown = useCallback((index: number, e: React.KeyboardEvent) => {
+    if (e.key === 'Enter') {
+      handleStartCommit(index)
+    }
+  }, [handleStartCommit])
+
+  const handleEndKeyDown = useCallback((index: number, e: React.KeyboardEvent) => {
+    if (e.key === 'Enter') {
+      handleEndCommit(index)
+    }
+  }, [handleEndCommit])
 
   const handleDelete = useCallback((index: number) => {
     deleteSegment(clipId, index)
@@ -81,12 +123,7 @@ export function CaptionEditor({ clipId, projectId }: CaptionEditorProps) {
   }, [clipId, autoFitTimings, announce])
 
   const handleSkip = useCallback((time: number) => {
-    const clipsA = useClipStore.getState().getSlotClips(projectId, 'A')
-    const clipIndex = clipsA.findIndex((c) => c.id === clipId)
-    let offset = 0
-    for (let i = 0; i < clipIndex; i++) {
-      offset += clipsA[i].duration
-    }
+    const offset = computeStitchedOffset(projectId, clipId)
     useClipStore.getState().setPendingSeek(offset + time)
     const m = Math.floor((offset + time) / 60)
     const s = Math.floor((offset + time) % 60)
@@ -136,16 +173,20 @@ export function CaptionEditor({ clipId, projectId }: CaptionEditorProps) {
               <span className="text-[10px] font-mono text-gray-500 shrink-0">#{i + 1}</span>
               <input
                 type="text"
-                value={fmt(seg.start)}
-                onChange={(e) => handleStartChange(i, e.target.value)}
+                value={draftStart[`${clipId}-${i}`] ?? fmt(seg.start)}
+                onChange={(e) => handleStartDraft(i, e.target.value)}
+                onBlur={() => handleStartCommit(i)}
+                onKeyDown={(e) => handleStartKeyDown(i, e)}
                 aria-label={`Caption ${i + 1} start time`}
                 className="w-16 rounded border border-gray-600 bg-gray-800 px-1 py-0.5 text-[10px] font-mono text-gray-200 focus:outline-none focus:ring-1 focus:ring-sky-500"
               />
               <span className="text-[10px] text-gray-500">–</span>
               <input
                 type="text"
-                value={fmt(seg.end)}
-                onChange={(e) => handleEndChange(i, e.target.value)}
+                value={draftEnd[`${clipId}-${i}`] ?? fmt(seg.end)}
+                onChange={(e) => handleEndDraft(i, e.target.value)}
+                onBlur={() => handleEndCommit(i)}
+                onKeyDown={(e) => handleEndKeyDown(i, e)}
                 aria-label={`Caption ${i + 1} end time`}
                 className="w-16 rounded border border-gray-600 bg-gray-800 px-1 py-0.5 text-[10px] font-mono text-gray-200 focus:outline-none focus:ring-1 focus:ring-sky-500"
               />

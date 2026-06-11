@@ -10,6 +10,7 @@ interface ClipState {
   getSlotClips: (projectId: string, slot: 'A' | 'B') => Clip[];
   getClipById: (projectId: string, slot: 'A' | 'B', clipId: string) => Clip | undefined;
   addClip: (projectId: string, slot: 'A' | 'B', clip: Clip) => void;
+  insertClipAt: (projectId: string, slot: 'A' | 'B', index: number, clip: Clip) => void;
   removeClip: (projectId: string, slot: 'A' | 'B', clipId: string) => Clip | undefined;
   toggleMute: (projectId: string, slot: 'A' | 'B', clipId: string) => void;
   reorderClip: (projectId: string, slot: 'A' | 'B', clipId: string, direction: 'up' | 'down') => void;
@@ -50,6 +51,18 @@ export const useClipStore = create<ClipState>()(
           clips: {
             ...state.clips,
             [projectId]: { ...currentProject, [slot]: updatedSlot }
+          }
+        };
+      }),
+
+      insertClipAt: (projectId, slot, index, clip) => set((state) => {
+        const currentProject = state.clips[projectId] || { A: [], B: [] };
+        const arr = [...currentProject[slot]];
+        arr.splice(index, 0, clip);
+        return {
+          clips: {
+            ...state.clips,
+            [projectId]: { ...currentProject, [slot]: arr }
           }
         };
       }),

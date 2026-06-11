@@ -210,7 +210,7 @@ function Workspace({ onConcatNeeded }: { onConcatNeeded?: (projectId: string) =>
         </div>
         <div role="tabpanel" id="panel-editing" aria-label="Editing tab panel" hidden={activeTab !== 'editing'}>
           {activeTab === 'editing' && (
-            <EditingPanel projectId={currentProjectId} />
+            <EditingPanel projectId={currentProjectId} onConcatNeeded={handleConcatNeeded} />
           )}
         </div>
         <div role="tabpanel" id="panel-director" aria-label="Director tab panel" hidden={activeTab !== 'director'}>
@@ -220,7 +220,7 @@ function Workspace({ onConcatNeeded }: { onConcatNeeded?: (projectId: string) =>
         </div>
         <div role="tabpanel" id="panel-timeline" aria-label="Timeline tab panel" hidden={activeTab !== 'timeline'}>
           {activeTab === 'timeline' && (
-            <TimelineEditor projectId={currentProjectId} />
+            <TimelineEditor projectId={currentProjectId} onConcatNeeded={handleConcatNeeded} />
           )}
         </div>
         <div role="tabpanel" id="panel-export" aria-label="Export tab panel" hidden={activeTab !== 'export'}>

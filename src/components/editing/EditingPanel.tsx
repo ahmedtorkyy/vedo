@@ -7,16 +7,18 @@ import { useTranscriptionStore } from '../../lib/transcription'
 import { SilenceTimeline } from './SilenceTimeline'
 import { SmartCutPanel } from './SmartCutPanel'
 import type { SmartCutOptions, Clip } from '../../types'
+import { computeStitchedOffset } from '../../lib/timeline/compute-offset'
 
 interface EditingPanelProps {
   projectId: string
+  onConcatNeeded?: () => void
 }
 
 function defaultOptions(_clipId: string): SmartCutOptions {
   return { enabled: true, aggressiveness: 'medium' }
 }
 
-export function EditingPanel({ projectId }: EditingPanelProps) {
+export function EditingPanel({ projectId, onConcatNeeded }: EditingPanelProps) {
   const [selectedClipId, setSelectedClipId] = useState<string | null>(null)
   const [cutStatus, setCutStatus] = useState<'idle' | 'applying' | 'done' | 'error'>('idle')
   const [cutError, setCutError] = useState<string | undefined>()
@@ -79,24 +81,14 @@ export function EditingPanel({ projectId }: EditingPanelProps) {
     setSmartCutOptions(selectedClipId, newOptions)
   }, [selectedClipId, setSmartCutOptions])
 
-  const computeOffset = useCallback((clipId: string) => {
-    const clipsA = useClipStore.getState().getSlotClips(projectId, 'A')
-    const idx = clipsA.findIndex((c) => c.id === clipId)
-    let offset = 0
-    for (let i = 0; i < idx; i++) {
-      offset += clipsA[i].duration
-    }
-    return offset
-  }, [projectId])
-
   const handleSkip = useCallback((time: number) => {
     if (!selectedClipId) return
-    const offset = computeOffset(selectedClipId)
+    const offset = computeStitchedOffset(projectId, selectedClipId)
     useClipStore.getState().setPendingSeek(offset + time)
     const m = Math.floor((offset + time) / 60)
     const s = Math.floor((offset + time) % 60)
     announce(`Seeking to ${m}:${s.toString().padStart(2, '0')}`)
-  }, [selectedClipId, computeOffset, announce])
+  }, [selectedClipId, projectId, announce])
 
   const handleTrim = useCallback((index: number) => {
     if (!selectedClipId) return
@@ -138,8 +130,13 @@ export function EditingPanel({ projectId }: EditingPanelProps) {
           duration: Math.max(0.1, newDuration),
           muted: selectedClip.muted,
         }
-        useClipStore.getState().addClip(projectId, 'A', newClip)
-        announce(`Smart cut complete. New clip "${newClip.fileName}" added.`)
+        const store = useClipStore.getState()
+        const clipsA = store.getSlotClips(projectId, 'A')
+        const idx = clipsA.findIndex((c) => c.id === selectedClipId)
+        store.removeClip(projectId, 'A', selectedClipId)
+        store.insertClipAt(projectId, 'A', idx, newClip)
+        onConcatNeeded?.()
+        announce(`Smart cut complete. Clip trimmed to ${newDuration.toFixed(1)}s.`)
         setCutStatus('done')
         clearSilenceSelections(selectedClipId)
       }
@@ -148,7 +145,7 @@ export function EditingPanel({ projectId }: EditingPanelProps) {
       setCutError(err instanceof Error ? err.message : 'Smart cut failed')
       announce('Smart cut failed', true)
     }
-  }, [projectId, selectedClipId, selectedClip, selectedOptions, clearSilenceSelections, announce])
+  }, [projectId, selectedClipId, selectedClip, selectedOptions, clearSilenceSelections, onConcatNeeded, announce])
 
   const totalSilenceDuration = silenceSegments.reduce((sum, s) => sum + s.duration, 0)
   const clipDuration = selectedClip?.duration ?? 0

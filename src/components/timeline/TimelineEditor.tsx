@@ -1,12 +1,14 @@
-import { useState, useCallback, useMemo, useRef } from 'react'
+import { useState, useCallback, useMemo } from 'react'
 import { useClipStore } from '../../lib/state'
 import { useTranscriptionStore } from '../../lib/transcription'
 import { useTimelineStore } from '../../lib/timeline/timeline-store'
 import { useAriaAnnouncer } from '../accessibility/AriaAnnouncer'
+import { computeStitchedOffset } from '../../lib/timeline/compute-offset'
 import type { Clip } from '../../types'
 
 interface TimelineEditorProps {
   projectId: string
+  onConcatNeeded?: () => void
 }
 
 interface EntryMeta {
@@ -36,7 +38,7 @@ function parseTime(str: string): number {
   return parseFloat(str) || 0
 }
 
-export function TimelineEditor({ projectId }: TimelineEditorProps) {
+export function TimelineEditor({ projectId, onConcatNeeded }: TimelineEditorProps) {
   const clipsA = useClipStore((s) => s.getSlotClips(projectId, 'A'))
   const clipsB = useClipStore((s) => s.getSlotClips(projectId, 'B'))
   const transcriptResults = useTranscriptionStore((s) => s.results)
@@ -47,6 +49,9 @@ export function TimelineEditor({ projectId }: TimelineEditorProps) {
   const updateSegment = useTranscriptionStore((s) => s.updateSegment)
   const { announce } = useAriaAnnouncer()
   const [applyingId, setApplyingId] = useState<string | null>(null)
+  const [draftStart, setDraftStart] = useState<Record<string, string>>({})
+  const [draftEnd, setDraftEnd] = useState<Record<string, string>>({})
+  const [draftDur, setDraftDur] = useState<Record<string, string>>({})
 
   const entries = useMemo(() => {
     const result: EntryMeta[] = []
@@ -94,40 +99,79 @@ export function TimelineEditor({ projectId }: TimelineEditorProps) {
     return { start: entry.originalStart, end: entry.originalEnd }
   }, [timelineEdits])
 
-  const handleStartChange = useCallback((entryId: string, value: string) => {
-    const start = parseTime(value)
-    if (isNaN(start)) return
+  const handleStartDraft = useCallback((entryId: string, value: string) => {
+    setDraftStart((prev) => ({ ...prev, [entryId]: value }))
+  }, [])
+
+  const handleEndDraft = useCallback((entryId: string, value: string) => {
+    setDraftEnd((prev) => ({ ...prev, [entryId]: value }))
+  }, [])
+
+  const handleDurDraft = useCallback((entryId: string, value: string) => {
+    setDraftDur((prev) => ({ ...prev, [entryId]: value }))
+  }, [])
+
+  const commitStart = useCallback((entryId: string) => {
+    const draft = draftStart[entryId]
+    if (draft === undefined) return
+    const start = parseTime(draft)
+    if (isNaN(start)) {
+      setDraftStart((prev) => { const n = { ...prev }; delete n[entryId]; return n })
+      return
+    }
     const entry = entries.find((e) => e.id === entryId)
     if (!entry) return
     const current = getValue(entry)
     setEdit(projectId, entryId, start, current.end)
+    setDraftStart((prev) => { const n = { ...prev }; delete n[entryId]; return n })
     announce(`${entry.label} start set to ${fmt(start)}`)
-  }, [projectId, entries, getValue, setEdit, announce])
+  }, [draftStart, entries, getValue, projectId, setEdit, announce])
 
-  const handleEndChange = useCallback((entryId: string, value: string) => {
-    const end = parseTime(value)
-    if (isNaN(end)) return
+  const commitEnd = useCallback((entryId: string) => {
+    const draft = draftEnd[entryId]
+    if (draft === undefined) return
+    const end = parseTime(draft)
+    if (isNaN(end)) {
+      setDraftEnd((prev) => { const n = { ...prev }; delete n[entryId]; return n })
+      return
+    }
     const entry = entries.find((e) => e.id === entryId)
     if (!entry) return
     const current = getValue(entry)
     setEdit(projectId, entryId, current.start, end)
+    setDraftEnd((prev) => { const n = { ...prev }; delete n[entryId]; return n })
     announce(`${entry.label} end set to ${fmt(end)}`)
-  }, [projectId, entries, getValue, setEdit, announce])
+  }, [draftEnd, entries, getValue, projectId, setEdit, announce])
 
-  const handleDurationChange = useCallback((entryId: string, value: string) => {
-    const dur = parseTime(value)
-    if (isNaN(dur) || dur <= 0) return
+  const commitDur = useCallback((entryId: string) => {
+    const draft = draftDur[entryId]
+    if (draft === undefined) return
+    const dur = parseTime(draft)
+    if (isNaN(dur) || dur <= 0) {
+      setDraftDur((prev) => { const n = { ...prev }; delete n[entryId]; return n })
+      return
+    }
     const entry = entries.find((e) => e.id === entryId)
     if (!entry) return
     const current = getValue(entry)
     setEdit(projectId, entryId, current.start, current.start + dur)
+    setDraftDur((prev) => { const n = { ...prev }; delete n[entryId]; return n })
     announce(`${entry.label} duration set to ${dur.toFixed(1)}s`)
-  }, [projectId, entries, getValue, setEdit, announce])
+  }, [draftDur, entries, getValue, projectId, setEdit, announce])
 
-  const handlePreview = useCallback((time: number) => {
-    useClipStore.getState().setPendingSeek(time)
-    announce(`Preview at ${fmt(time)}`)
-  }, [announce])
+  const handleInputKeyDown = useCallback((entryId: string, commit: () => void, e: React.KeyboardEvent) => {
+    if (e.key === 'Enter') {
+      commit()
+    }
+  }, [])
+
+  const handlePreview = useCallback((entry: EntryMeta, time: number) => {
+    const offset = entry.type === 'clip' && entry.clipId
+      ? computeStitchedOffset(projectId, entry.clipId)
+      : 0
+    useClipStore.getState().setPendingSeek(offset + time)
+    announce(`Preview at ${fmt(offset + time)}`)
+  }, [projectId, announce])
 
   const handleReset = useCallback((entryId: string, entry: EntryMeta) => {
     removeEdit(projectId, entryId)
@@ -139,35 +183,65 @@ export function TimelineEditor({ projectId }: TimelineEditorProps) {
     if (!edit) return
     setApplyingId(entry.id)
     try {
-      if (entry.type === 'clip' && edit.start !== entry.originalStart) {
-        const { smartCutVideo } = await import('../../lib/ffmpeg')
-        const clip = clipsA.find((c) => c.id === entry.clipId)
-        if (clip) {
-          const segments = [{ start: entry.originalStart, end: edit.start }]
-          const outName = await smartCutVideo(projectId, clip.opfsFilename, segments, clip.duration)
-          const newClip: Clip = {
-            id: `trim-${clip.id}-${Date.now()}`,
-            fileName: `Trimmed: ${clip.fileName}`,
-            fileSize: clip.fileSize,
-            filePath: clip.filePath,
-            opfsFilename: outName,
-            duration: Math.max(0.1, edit.end - edit.start),
-            muted: clip.muted,
+      if (entry.type === 'clip' && entry.clipId) {
+        const changed = edit.start !== entry.originalStart || edit.end !== entry.originalEnd
+        if (changed) {
+          const { smartCutVideo } = await import('../../lib/ffmpeg')
+          const clip = clipsA.find((c) => c.id === entry.clipId)
+          if (clip) {
+            const segments: { start: number; end: number }[] = []
+            if (edit.start > entry.originalStart) {
+              segments.push({ start: entry.originalStart, end: edit.start })
+            }
+            if (edit.end < entry.originalEnd) {
+              segments.push({ start: edit.end, end: entry.originalEnd })
+            }
+            const outName = await smartCutVideo(projectId, clip.opfsFilename, segments, clip.duration)
+            const newClip: Clip = {
+              id: `trim-${clip.id}-${Date.now()}`,
+              fileName: `Trimmed: ${clip.fileName}`,
+              fileSize: clip.fileSize,
+              filePath: clip.filePath,
+              opfsFilename: outName,
+              duration: Math.max(0.1, edit.end - edit.start),
+              muted: clip.muted,
+            }
+            const store = useClipStore.getState()
+            const currentClipsA = store.getSlotClips(projectId, 'A')
+            const idx = currentClipsA.findIndex((c) => c.id === entry.clipId)
+            store.removeClip(projectId, 'A', entry.clipId)
+            store.insertClipAt(projectId, 'A', idx, newClip)
           }
-          useClipStore.getState().addClip(projectId, 'A', newClip)
         }
       }
       if (entry.type === 'caption' && entry.clipId && entry.captionIndex !== undefined) {
         updateSegment(entry.clipId, entry.captionIndex, { start: edit.start, end: edit.end })
       }
+      if (entry.type === 'overlay' && entry.clipId) {
+        const overlayClip = clipsB.find((c) => c.id === entry.clipId)
+        if (overlayClip) {
+          const store = useClipStore.getState()
+          const currentClipsB = store.getSlotClips(projectId, 'B')
+          const idx = currentClipsB.findIndex((c) => c.id === entry.clipId)
+          store.removeClip(projectId, 'B', entry.clipId)
+          const updated: Clip = {
+            ...overlayClip,
+            duration: Math.max(0.1, edit.end - edit.start),
+          }
+          store.insertClipAt(projectId, 'B', idx, updated)
+        }
+        const { useDirectorStore } = await import('../../lib/director')
+        useDirectorStore.getState().updateOverlayDecision(projectId, entry.clipId, edit.start, edit.end)
+      }
       removeEdit(projectId, entry.id)
+      onConcatNeeded?.()
       announce(`${entry.label} applied`)
-    } catch (err) {
+    } catch {
       announce(`Apply failed for ${entry.label}`, true)
     } finally {
       setApplyingId(null)
     }
-  }, [projectId, timelineEdits, clipsA, updateSegment, removeEdit, announce])
+  }, [projectId, timelineEdits, clipsA, clipsB, updateSegment, removeEdit, onConcatNeeded, announce])
 
   const handleApplyAll = useCallback(async () => {
     const dirty = entries.filter((e) => timelineEdits[e.id])
@@ -248,24 +322,30 @@ export function TimelineEditor({ projectId }: TimelineEditorProps) {
                 <label className="text-[9px] text-gray-500">Start</label>
                 <input
                   type="text"
-                  value={fmt(current.start)}
-                  onChange={(e) => handleStartChange(entry.id, e.target.value)}
+                  value={draftStart[entry.id] ?? fmt(current.start)}
+                  onChange={(e) => handleStartDraft(entry.id, e.target.value)}
+                  onBlur={() => commitStart(entry.id)}
+                  onKeyDown={(e) => handleInputKeyDown(entry.id, () => commitStart(entry.id), e)}
                   aria-label={`${entry.label} start time`}
                   className="w-16 rounded border border-gray-600 bg-gray-800 px-1 py-0.5 text-[10px] font-mono text-gray-200 focus:outline-none focus:ring-1 focus:ring-sky-500"
                 />
                 <label className="text-[9px] text-gray-500">End</label>
                 <input
                   type="text"
-                  value={fmt(current.end)}
-                  onChange={(e) => handleEndChange(entry.id, e.target.value)}
+                  value={draftEnd[entry.id] ?? fmt(current.end)}
+                  onChange={(e) => handleEndDraft(entry.id, e.target.value)}
+                  onBlur={() => commitEnd(entry.id)}
+                  onKeyDown={(e) => handleInputKeyDown(entry.id, () => commitEnd(entry.id), e)}
                   aria-label={`${entry.label} end time`}
                   className="w-16 rounded border border-gray-600 bg-gray-800 px-1 py-0.5 text-[10px] font-mono text-gray-200 focus:outline-none focus:ring-1 focus:ring-sky-500"
                 />
                 <label className="text-[9px] text-gray-500">Dur</label>
                 <input
                   type="text"
-                  value={duration.toFixed(1)}
-                  onChange={(e) => handleDurationChange(entry.id, e.target.value)}
+                  value={draftDur[entry.id] ?? duration.toFixed(1)}
+                  onChange={(e) => handleDurDraft(entry.id, e.target.value)}
+                  onBlur={() => commitDur(entry.id)}
+                  onKeyDown={(e) => handleInputKeyDown(entry.id, () => commitDur(entry.id), e)}
                   aria-label={`${entry.label} duration in seconds`}
                   className="w-14 rounded border border-gray-600 bg-gray-800 px-1 py-0.5 text-[10px] font-mono text-gray-200 focus:outline-none focus:ring-1 focus:ring-sky-500"
                 />
@@ -273,7 +353,7 @@ export function TimelineEditor({ projectId }: TimelineEditorProps) {
                 <div className="ml-auto flex gap-1">
                   <button
                     type="button"
-                    onClick={() => handlePreview(current.start)}
+                    onClick={() => handlePreview(entry, current.start)}
                     aria-label={`Preview ${entry.label}`}
                     className="rounded p-0.5 text-gray-500 hover:text-gray-300 focus:outline-none focus:ring-1 focus:ring-sky-500"
                   >

@@ -1,6 +1,6 @@
 import { create } from 'zustand'
 import { persist } from 'zustand/middleware'
-import type { DirectorState, StyleKey, EditPlan, Suggestion } from './types'
+import type { DirectorState, StyleKey, EditPlan, Suggestion, OverlayDecision } from './types'
 
 interface DirectorStore {
   state: Record<string, DirectorState>
@@ -12,6 +12,7 @@ interface DirectorStore {
   setFeedbackText: (projectId: string, text: string) => void
   toggleSuggestion: (projectId: string, suggestionId: string) => void
   setError: (projectId: string, error: string) => void
+  updateOverlayDecision: (projectId: string, overlayClipId: string, startTime: number, endTime: number) => void
   clearProject: (projectId: string) => void
   clearAll: () => void
 }
@@ -104,6 +105,28 @@ export const useDirectorStore = create<DirectorStore>()(
             [projectId]: { ...(s.state[projectId] ?? emptyState(projectId)), status: 'error', error },
           },
         })),
+
+      updateOverlayDecision: (projectId, overlayClipId, startTime, endTime) =>
+        set((s) => {
+          const existing = s.state[projectId]
+          if (!existing?.plan) return {}
+          return {
+            state: {
+              ...s.state,
+              [projectId]: {
+                ...existing,
+                plan: {
+                  ...existing.plan,
+                  decisions: existing.plan.decisions.map((d) =>
+                    d.type === 'overlay' && (d as OverlayDecision).overlayClipId === overlayClipId
+                      ? { ...d, startTime, endTime }
+                      : d
+                  ),
+                },
+              },
+            },
+          }
+        }),
 
       clearProject: (projectId) =>
         set((s) => {
