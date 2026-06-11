@@ -6,17 +6,30 @@ let ffmpeg: FFmpeg | null = null
 const MEMFS_WARN_BYTES = 256 * 1024 * 1024
 const MEMFS_LIMIT_BYTES = 1.5 * 1024 * 1024 * 1024
 
-const FONT_FILENAME = 'noto-sans.ttf'
-const FONT_URL = 'https://cdn.jsdelivr.net/npm/@fontsource/noto-sans@5.0.18/files/noto-sans-latin-400-normal.ttf'
-let cachedFontData: Uint8Array | null = null
+const LATIN_FONT_FILENAME = 'noto-sans.ttf'
+const ARABIC_FONT_FILENAME = 'noto-sans-arabic.ttf'
+const LATIN_FONT_URL = 'https://cdn.jsdelivr.net/npm/@fontsource/noto-sans@5.0.18/files/noto-sans-latin-400-normal.ttf'
+const ARABIC_FONT_URL = 'https://cdn.jsdelivr.net/npm/@fontsource/noto-sans-arabic@5.0.16/files/noto-sans-arabic-arabic-400-normal.ttf'
+let cachedFontLatin: Uint8Array | null = null
+let cachedFontArabic: Uint8Array | null = null
 
-async function getFont(): Promise<Uint8Array> {
-  if (!cachedFontData) {
-    const response = await fetch(FONT_URL)
-    if (!response.ok) throw new Error(`Font download failed: ${response.status}`)
-    cachedFontData = new Uint8Array(await response.arrayBuffer())
+async function ensureFonts(): Promise<void> {
+  if (!cachedFontLatin) {
+    const resp = await fetch(LATIN_FONT_URL)
+    if (!resp.ok) throw new Error(`Latin font download failed: ${resp.status}`)
+    cachedFontLatin = new Uint8Array(await resp.arrayBuffer())
   }
-  return cachedFontData
+  if (!cachedFontArabic) {
+    const resp = await fetch(ARABIC_FONT_URL)
+    if (!resp.ok) throw new Error(`Arabic font download failed: ${resp.status}`)
+    cachedFontArabic = new Uint8Array(await resp.arrayBuffer())
+  }
+}
+
+async function writeFonts(instance: FFmpeg): Promise<void> {
+  await ensureFonts()
+  await instance.writeFile(LATIN_FONT_FILENAME, cachedFontLatin!)
+  await instance.writeFile(ARABIC_FONT_FILENAME, cachedFontArabic!)
 }
 
 async function getFFmpeg(): Promise<FFmpeg> {
@@ -289,8 +302,7 @@ self.onmessage = async (e: MessageEvent) => {
         }
       }
 
-      const fontData = await getFont()
-      await instance.writeFile(FONT_FILENAME, fontData)
+      await writeFonts(instance)
 
       const args = ['-i', inputName]
       const writtenOverlays: string[] = []

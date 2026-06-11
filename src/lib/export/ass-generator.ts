@@ -5,6 +5,17 @@ export interface DrawtextResult {
   textFiles: { name: string; content: string }[]
 }
 
+const LATIN_FONT = 'noto-sans.ttf'
+const ARABIC_FONT = 'noto-sans-arabic.ttf'
+
+function hasArabic(text: string): boolean {
+  return /[\u0600-\u06FF\u0750-\u077F\u08A0-\u08FF\uFB50-\uFDFF\uFE70-\uFEFF]/.test(text)
+}
+
+function fontForText(text: string): string {
+  return hasArabic(text) ? ARABIC_FONT : LATIN_FONT
+}
+
 export function buildDrawtextFilters(
   segments: SegmentWithTiming[],
   _videoWidth: number,
@@ -13,7 +24,6 @@ export function buildDrawtextFilters(
   const fontSize = Math.max(16, Math.round(videoHeight / 30))
   const borderWidth = Math.max(1, Math.round(fontSize / 12))
   const yPos = `h-text_h-${Math.round(videoHeight * 0.06)}`
-  const fontFilename = 'noto-sans.ttf'
 
   const filters: string[] = []
   const textFiles: { name: string; content: string }[] = []
@@ -24,7 +34,7 @@ export function buildDrawtextFilters(
     const enable = `between(t,${seg.stitchedStart.toFixed(3)},${seg.stitchedEnd.toFixed(3)})`
     const filename = `caption_${i}.txt`
     filters.push(
-      `drawtext=textfile=${filename}:fontfile=${fontFilename}:fontsize=${fontSize}:fontcolor=white:borderw=${borderWidth}:bordercolor=black:x=(w-text_w)/2:y=${yPos}:enable='${enable}'`
+      `drawtext=textfile=${filename}:fontfile=${fontForText(seg.text.trim())}:fontsize=${fontSize}:fontcolor=white:borderw=${borderWidth}:bordercolor=black:x=(w-text_w)/2:y=${yPos}:enable='${enable}'`
     )
     textFiles.push({ name: filename, content: seg.text.trim() })
   }
@@ -46,7 +56,7 @@ export function buildSubtitleFilter(
   const assFilename = `subs_${clipId.replace(/[^a-zA-Z0-9._-]/g, '_')}.ass`
   const content = buildAssContent(segments, videoWidth, videoHeight)
   return {
-    filter: `subtitles=${assFilename}`,
+    filter: `subtitles=${assFilename}:fontsdir=/`,
     assFiles: [{ name: assFilename, content }],
   }
 }
@@ -98,7 +108,7 @@ export function buildAssContent(
 
   ass += '[V4+ Styles]\n'
   ass += 'Format: Name, Fontname, Fontsize, PrimaryColour, SecondaryColour, OutlineColour, BackColour, Bold, Italic, Underline, StrikeOut, ScaleX, ScaleY, Spacing, Angle, BorderStyle, Outline, Shadow, Alignment, MarginL, MarginR, MarginV, Encoding\n'
-  ass += `Style: Default,Arial,${fontSize},&H00FFFFFF,&H000000FF,&H00000000,&H00000000,0,0,0,0,100,100,0,0,1,2,1,2,${marginL},${marginR},${marginV},1\n`
+  ass += `Style: Default,Noto Sans,${fontSize},&H00FFFFFF,&H000000FF,&H00000000,&H00000000,0,0,0,0,100,100,0,0,1,2,1,2,${marginL},${marginR},${marginV},1\n`
   ass += '\n'
 
   ass += '[Events]\n'
