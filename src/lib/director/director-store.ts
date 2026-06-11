@@ -1,6 +1,6 @@
 import { create } from 'zustand'
 import { persist } from 'zustand/middleware'
-import type { DirectorState, StyleKey, EditPlan } from './types'
+import type { DirectorState, StyleKey, EditPlan, Suggestion } from './types'
 
 interface DirectorStore {
   state: Record<string, DirectorState>
@@ -8,6 +8,9 @@ interface DirectorStore {
   setStyle: (projectId: string, style: StyleKey) => void
   setStatus: (projectId: string, status: DirectorState['status']) => void
   setPlan: (projectId: string, plan: EditPlan) => void
+  setSuggestions: (projectId: string, suggestions: Suggestion[]) => void
+  setFeedbackText: (projectId: string, text: string) => void
+  toggleSuggestion: (projectId: string, suggestionId: string) => void
   setError: (projectId: string, error: string) => void
   clearProject: (projectId: string) => void
   clearAll: () => void
@@ -19,6 +22,8 @@ function emptyState(_projectId: string): DirectorState {
     instructions: '',
     selectedStyle: 'professional',
     plan: null,
+    suggestions: [],
+    feedbackText: '',
   }
 }
 
@@ -58,6 +63,39 @@ export const useDirectorStore = create<DirectorStore>()(
             [projectId]: { ...(s.state[projectId] ?? emptyState(projectId)), plan, status: 'ready' },
           },
         })),
+
+      setSuggestions: (projectId, suggestions) =>
+        set((s) => ({
+          state: {
+            ...s.state,
+            [projectId]: { ...(s.state[projectId] ?? emptyState(projectId)), suggestions },
+          },
+        })),
+
+      setFeedbackText: (projectId, feedbackText) =>
+        set((s) => ({
+          state: {
+            ...s.state,
+            [projectId]: { ...(s.state[projectId] ?? emptyState(projectId)), feedbackText },
+          },
+        })),
+
+      toggleSuggestion: (projectId, suggestionId) =>
+        set((s) => {
+          const existing = s.state[projectId]
+          if (!existing) return {}
+          return {
+            state: {
+              ...s.state,
+              [projectId]: {
+                ...existing,
+                suggestions: existing.suggestions.map((sg) =>
+                  sg.id === suggestionId ? { ...sg, selected: !sg.selected } : sg
+                ),
+              },
+            },
+          }
+        }),
 
       setError: (projectId, error) =>
         set((s) => ({

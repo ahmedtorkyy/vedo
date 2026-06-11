@@ -3,6 +3,7 @@ import { useClipStore } from '../../lib/state'
 import { useTranscriptionStore, getAvailableModels } from '../../lib/transcription'
 import { useTranscription } from '../../hooks/useTranscription'
 import { TranscriptionSegmentRow } from './TranscriptionSegment'
+import { CaptionEditor } from './CaptionEditor'
 import { recommendModel } from '../../lib/editing'
 import type { AudioCleansingOptions } from '../../types'
 
@@ -165,6 +166,17 @@ export function TranscriptionPanel({ projectId }: TranscriptionPanelProps) {
               />
             ))}
           </div>
+
+          {selectedClipId && (
+            <details className="rounded-md border border-gray-700 bg-gray-800/30">
+              <summary className="cursor-pointer px-3 py-2 text-xs font-medium text-gray-400 hover:text-gray-200">
+                Edit Captions
+              </summary>
+              <div className="px-3 pb-2 pt-1">
+                <CaptionEditor clipId={selectedClipId} projectId={projectId} />
+              </div>
+            </details>
+          )}
         </div>
       )}
 

@@ -1,9 +1,10 @@
-import { useCallback, useMemo } from 'react'
+import { useCallback, useMemo, useEffect } from 'react'
 import { useClipStore } from '../../lib/state'
 import { useDirector } from '../../hooks/useDirector'
-import { STYLE_LABELS, inferStyle, parseInstructions } from '../../lib/director'
+import { STYLE_LABELS, inferStyle, parseInstructions, generateSuggestions, useDirectorStore } from '../../lib/director'
 import type { StyleKey } from '../../lib/director'
 import { useAriaAnnouncer } from '../accessibility/AriaAnnouncer'
+import { ImprovementReview } from './ImprovementReview'
 
 interface DirectorPanelProps {
   projectId: string
@@ -38,6 +39,22 @@ export function DirectorPanel({ projectId }: DirectorPanelProps) {
     executePlan()
     announce('Executing editing plan')
   }, [executePlan, announce])
+
+  const handleImprovementApply = useCallback((adjustedInstructions: string, adjustedStyle: string) => {
+    setInstructions(adjustedInstructions)
+    setStyle(adjustedStyle as StyleKey)
+    generatePlan()
+  }, [setInstructions, setStyle, generatePlan])
+
+  useEffect(() => {
+    if (status === 'ready' && plan) {
+      const state = useDirectorStore.getState().state[projectId]
+      if (state && state.suggestions.length === 0) {
+        const sg = generateSuggestions(plan)
+        useDirectorStore.getState().setSuggestions(projectId, sg)
+      }
+    }
+  }, [status, plan, projectId])
 
   return (
     <section role="region" aria-label="AI Director" className="space-y-3">
@@ -198,6 +215,13 @@ export function DirectorPanel({ projectId }: DirectorPanelProps) {
         <div role="status" className="rounded-md bg-emerald-900/30 px-3 py-2 text-xs text-emerald-300">
           Edit plan executed successfully.
         </div>
+      )}
+
+      {status === 'done' && plan && (
+        <ImprovementReview
+          projectId={projectId}
+          onApply={handleImprovementApply}
+        />
       )}
     </section>
   )

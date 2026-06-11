@@ -9,11 +9,12 @@ import { TranscriptionPanel } from './components/transcription'
 import { EditingPanel } from './components/editing'
 import { DirectorPanel } from './components/director'
 import { ExportPanel } from './components/export/ExportPanel'
+import { TimelineEditor } from './components/timeline/TimelineEditor'
 import { AriaAnnouncerProvider, useAriaAnnouncer } from './components/accessibility/AriaAnnouncer'
 import { AudioOrchestrator } from './lib/audio'
 import { saveSessionSnapshot, restoreSession } from './lib/session/session-recovery'
 
-type WorkspaceTab = 'slota' | 'slotb' | 'preview' | 'transcription' | 'editing' | 'director' | 'export'
+type WorkspaceTab = 'slota' | 'slotb' | 'preview' | 'transcription' | 'editing' | 'director' | 'timeline' | 'export'
 const workspaceRef = { current: null as HTMLDivElement | null }
 
 function Workspace({ onConcatNeeded }: { onConcatNeeded?: (projectId: string) => void }) {
@@ -23,6 +24,7 @@ function Workspace({ onConcatNeeded }: { onConcatNeeded?: (projectId: string) =>
   const pushSnapshot = useHistoryStore((s) => s.pushSnapshot)
   const { announce } = useAriaAnnouncer()
   const [activeTab, setActiveTab] = useState<WorkspaceTab>('slota')
+  const [pendingTab, setPendingTab] = useState<WorkspaceTab | null>(null)
   const prevConcatRef = useRef(concatJob.status)
   const tabRefs = useRef<Record<string, HTMLButtonElement | null>>({})
 
@@ -75,6 +77,7 @@ function Workspace({ onConcatNeeded }: { onConcatNeeded?: (projectId: string) =>
     { key: 'transcription', label: 'Transcription' },
     { key: 'editing', label: 'Editing' },
     { key: 'director', label: 'Director' },
+    { key: 'timeline', label: 'Timeline' },
     { key: 'export', label: 'Export' },
   ]
 
@@ -109,6 +112,10 @@ function Workspace({ onConcatNeeded }: { onConcatNeeded?: (projectId: string) =>
               next = tabs[(idx - 1 + tabs.length) % tabs.length].key
             }
             if (next) {
+              if (activeTab === 'timeline' && next === 'director') {
+                setPendingTab(next)
+                return
+              }
               setActiveTab(next)
               tabRefs.current[next]?.focus()
               announce(`Switched to ${tabs.find((t) => t.key === next)!.label} tab`)
@@ -124,6 +131,10 @@ function Workspace({ onConcatNeeded }: { onConcatNeeded?: (projectId: string) =>
               tabIndex={activeTab === tab.key ? 0 : -1}
               aria-controls={`panel-${tab.key}`}
               onClick={() => {
+                if (activeTab === 'timeline' && tab.key === 'director') {
+                  setPendingTab(tab.key)
+                  return
+                }
                 setActiveTab(tab.key)
                 announce(`Switched to ${tab.label} tab`)
               }}
@@ -171,12 +182,56 @@ function Workspace({ onConcatNeeded }: { onConcatNeeded?: (projectId: string) =>
             <DirectorPanel projectId={currentProjectId} />
           )}
         </div>
+        <div role="tabpanel" id="panel-timeline" aria-label="Timeline tab panel" hidden={activeTab !== 'timeline'}>
+          {activeTab === 'timeline' && (
+            <TimelineEditor projectId={currentProjectId} />
+          )}
+        </div>
         <div role="tabpanel" id="panel-export" aria-label="Export tab panel" hidden={activeTab !== 'export'}>
           {activeTab === 'export' && (
             <ExportPanel projectId={currentProjectId} />
           )}
         </div>
       </div>
+
+      {pendingTab && (
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center bg-black/60"
+          role="dialog"
+          aria-modal="true"
+          aria-label="Confirm navigation"
+        >
+          <div className="mx-4 w-full max-w-sm rounded-lg bg-gray-800 p-4 shadow-xl">
+            <h3 className="text-sm font-semibold text-gray-200">Discard timeline changes?</h3>
+            <p className="mt-1 text-xs text-gray-400">
+              Returning to the Director will discard any unsaved timeline adjustments. Are you sure?
+            </p>
+            <div className="mt-4 flex justify-end gap-2">
+              <button
+                type="button"
+                onClick={() => setPendingTab(null)}
+                className="rounded-md bg-gray-700 px-3 py-1.5 text-xs text-gray-300 hover:bg-gray-600 focus:outline-none focus:ring-2 focus:ring-gray-500"
+                aria-label="Cancel, stay on timeline"
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  setActiveTab(pendingTab)
+                  setPendingTab(null)
+                  tabRefs.current[pendingTab]?.focus()
+                  announce(`Switched to ${tabs.find((t) => t.key === pendingTab)!.label} tab`)
+                }}
+                className="rounded-md bg-rose-700 px-3 py-1.5 text-xs text-white hover:bg-rose-600 focus:outline-none focus:ring-2 focus:ring-rose-500"
+                aria-label="Discard changes and switch to director"
+              >
+                Discard &amp; Switch
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   )
 }

@@ -27,17 +27,22 @@ export function EditingPanel({ projectId }: EditingPanelProps) {
 
   const analysis = useEditingStore((s) => s.analysis)
   const options = useEditingStore((s) => s.smartCutOptions)
+  const silenceSelections = useEditingStore((s) => s.silenceSelections)
   const setSmartCutOptions = useEditingStore((s) => s.setSmartCutOptions)
+  const toggleSilenceSelection = useEditingStore((s) => s.toggleSilenceSelection)
+  const selectAllSilences = useEditingStore((s) => s.selectAllSilences)
+  const clearSilenceSelections = useEditingStore((s) => s.clearSilenceSelections)
 
   const transcriptResults = useTranscriptionStore((s) => s.results)
 
-  const { detectSilenceForClip, applySmartCut } = useEditing()
+  const { detectSilenceForClip } = useEditing()
   const { announce } = useAriaAnnouncer()
 
   const selectedClip = allClips.find((c) => c.id === selectedClipId)
   const selectedAnalysis = selectedClipId ? analysis[selectedClipId] : undefined
   const selectedOptions = selectedClipId ? (options[selectedClipId] ?? defaultOptions(selectedClipId)) : defaultOptions('')
   const selectedTranscript = selectedClipId ? transcriptResults[selectedClipId] : undefined
+  const selectedSilenceIndices = useMemo(() => selectedClipId ? (silenceSelections[selectedClipId] ?? []) : [], [selectedClipId, silenceSelections])
 
   const isAnalyzing = selectedAnalysis?.status === 'analyzing'
 
@@ -45,6 +50,11 @@ export function EditingPanel({ projectId }: EditingPanelProps) {
     if (!selectedAnalysis || selectedAnalysis.status !== 'done') return []
     return selectedAnalysis.silenceSegments
   }, [selectedAnalysis])
+
+  const trimmedSegments = useMemo(() => {
+    if (selectedSilenceIndices.length === 0) return null
+    return selectedSilenceIndices.map((i) => silenceSegments[i]).filter(Boolean)
+  }, [selectedSilenceIndices, silenceSegments])
 
   const fillerWords = useMemo(() => {
     if (!selectedAnalysis || selectedAnalysis.status !== 'done') return []
@@ -69,22 +79,50 @@ export function EditingPanel({ projectId }: EditingPanelProps) {
     setSmartCutOptions(selectedClipId, newOptions)
   }, [selectedClipId, setSmartCutOptions])
 
-  const handleApply = useCallback(async () => {
+  const handleSkip = useCallback((time: number) => {
+    useClipStore.getState().setPendingSeek(time)
+    announce(`Seeking to ${Math.floor(time / 60)}:${Math.floor(time % 60).toString().padStart(2, '0')}`)
+  }, [announce])
+
+  const handleTrim = useCallback((index: number) => {
     if (!selectedClipId) return
+    toggleSilenceSelection(selectedClipId, index)
+    const isNow = selectedSilenceIndices.includes(index)
+    announce(isNow ? `Silence ${index + 1} will be kept` : `Silence ${index + 1} marked for trimming`)
+  }, [selectedClipId, toggleSilenceSelection, selectedSilenceIndices, announce])
+
+  const handleApply = useCallback(async () => {
+    if (!selectedClipId || !selectedClip) return
     setCutStatus('applying')
     setCutError(undefined)
     try {
-      const outputFilename = await applySmartCut(projectId, selectedClipId)
+      const state = useEditingStore.getState()
+      const analysis = state.analysis[selectedClipId]
+      if (!analysis || analysis.status !== 'done') throw new Error('Run silence detection first')
+
+      const selected = state.silenceSelections[selectedClipId]
+      let segments: { start: number; end: number }[]
+      if (selected && selected.length > 0) {
+        segments = selected.map((i) => analysis.silenceSegments[i]).filter(Boolean).map((s) => ({ start: s.start, end: s.end }))
+      } else {
+        const { filterSilenceSegments } = await import('../../lib/editing')
+        const opts = { enabled: true, aggressiveness: selectedOptions.aggressiveness }
+        segments = filterSilenceSegments(analysis.silenceSegments, opts).map((s) => ({ start: s.start, end: s.end }))
+      }
+      if (segments.length === 0) throw new Error('No silence segments selected for removal')
+
+      const { smartCutVideo } = await import('../../lib/ffmpeg')
+      const outputFilename = await smartCutVideo(projectId, selectedClip.opfsFilename, segments, selectedClip.duration)
       if (outputFilename) {
         setCutStatus('done')
-        announce('Smart cut complete. New clip created with silence removed.')
+        announce('Smart cut complete. Silences removed.')
       }
     } catch (err) {
       setCutStatus('error')
       setCutError(err instanceof Error ? err.message : 'Smart cut failed')
       announce('Smart cut failed', true)
     }
-  }, [projectId, selectedClipId, applySmartCut, announce])
+  }, [projectId, selectedClipId, selectedClip, selectedOptions, announce])
 
   const totalSilenceDuration = silenceSegments.reduce((sum, s) => sum + s.duration, 0)
   const clipDuration = selectedClip?.duration ?? 0
@@ -188,17 +226,39 @@ export function EditingPanel({ projectId }: EditingPanelProps) {
             </div>
           )}
 
+          {selectedSilenceIndices.length > 0 && (
+            <div className="flex gap-2">
+              <button
+                type="button"
+                onClick={() => selectedClipId && clearSilenceSelections(selectedClipId)}
+                className="rounded-md bg-gray-700 px-2 py-1 text-[10px] text-gray-300 hover:bg-gray-600 focus:outline-none focus:ring-2 focus:ring-gray-500"
+              >
+                Clear all selections ({selectedSilenceIndices.length})
+              </button>
+              <button
+                type="button"
+                onClick={() => selectedClipId && selectAllSilences(selectedClipId)}
+                className="rounded-md bg-rose-800/50 px-2 py-1 text-[10px] text-rose-300 hover:bg-rose-700/50 focus:outline-none focus:ring-2 focus:ring-rose-500"
+              >
+                Remove all ({silenceSegments.length})
+              </button>
+            </div>
+          )}
+
           <SilenceTimeline
             duration={clipDuration}
             segments={silenceSegments}
             fillerWords={fillerWords}
             lowEnergySections={lowEnergySections}
+            selectedSilenceIndices={selectedSilenceIndices}
+            onSkip={handleSkip}
+            onTrim={handleTrim}
           />
 
           <SmartCutPanel
             clipId={selectedClipId ?? ''}
             options={selectedOptions}
-            silenceCount={silenceSegments.length}
+            silenceCount={trimmedSegments ? trimmedSegments.length : silenceSegments.length}
             onOptionsChange={handleOptionsChange}
             onApply={handleApply}
             disabled={cutStatus === 'applying'}

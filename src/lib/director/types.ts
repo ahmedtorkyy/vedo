@@ -63,6 +63,8 @@ export interface DirectorState {
   instructions: string
   selectedStyle: StyleKey
   plan: EditPlan | null
+  suggestions: Suggestion[]
+  feedbackText: string
   error?: string
 }
 
@@ -102,4 +104,11 @@ export interface CombinedTimeline {
   silenceSegments: { start: number; end: number; duration: number; confidence: number }[]
   clips: { id: string; fileName: string; duration: number; slot: 'A' | 'B' }[]
   totalDuration: number
+}
+
+export interface Suggestion {
+  id: string
+  label: string
+  description: string
+  selected: boolean
 }

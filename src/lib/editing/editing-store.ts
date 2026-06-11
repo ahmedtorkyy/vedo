@@ -7,6 +7,7 @@ interface EditingStore {
   analysis: Record<string, AnalysisResult>
   markers: Record<string, TimelineMarker[]>
   smartCutOptions: Record<string, SmartCutOptions>
+  silenceSelections: Record<string, number[]>
 
   setAnalysisStatus: (clipId: string, status: AnalysisResult['status']) => void
   setSilenceSegments: (clipId: string, segments: SilenceSegment[]) => void
@@ -21,6 +22,10 @@ interface EditingStore {
   removeMarker: (clipId: string, markerId: string) => void
 
   setSmartCutOptions: (clipId: string, options: SmartCutOptions) => void
+
+  toggleSilenceSelection: (clipId: string, index: number) => void
+  selectAllSilences: (clipId: string) => void
+  clearSilenceSelections: (clipId: string) => void
 
   clearClipData: (clipId: string) => void
   removeProjectData: (projectId: string) => void
@@ -44,6 +49,7 @@ export const useEditingStore = create<EditingStore>()(
       analysis: {},
       markers: {},
       smartCutOptions: {},
+      silenceSelections: {},
 
       setAnalysisStatus: (clipId, status) =>
         set((s) => ({
@@ -127,6 +133,34 @@ export const useEditingStore = create<EditingStore>()(
           smartCutOptions: { ...s.smartCutOptions, [clipId]: options },
         })),
 
+      toggleSilenceSelection: (clipId, index) =>
+        set((s) => {
+          const current = s.silenceSelections[clipId] ?? []
+          const next = current.includes(index)
+            ? current.filter((i) => i !== index)
+            : [...current, index]
+          return {
+            silenceSelections: { ...s.silenceSelections, [clipId]: next },
+          }
+        }),
+
+      selectAllSilences: (clipId) =>
+        set((s) => {
+          const analysis = s.analysis[clipId]
+          if (!analysis || analysis.status !== 'done') return {}
+          const all = analysis.silenceSegments.map((_, i) => i)
+          return {
+            silenceSelections: { ...s.silenceSelections, [clipId]: all },
+          }
+        }),
+
+      clearSilenceSelections: (clipId) =>
+        set((s) => {
+          const next = { ...s.silenceSelections }
+          delete next[clipId]
+          return { silenceSelections: next }
+        }),
+
       clearClipData: (clipId) =>
         set((s) => {
           const nextAnalysis = { ...s.analysis }
@@ -135,7 +169,9 @@ export const useEditingStore = create<EditingStore>()(
           delete nextMarkers[clipId]
           const nextOptions = { ...s.smartCutOptions }
           delete nextOptions[clipId]
-          return { analysis: nextAnalysis, markers: nextMarkers, smartCutOptions: nextOptions }
+          const nextSelections = { ...s.silenceSelections }
+          delete nextSelections[clipId]
+          return { analysis: nextAnalysis, markers: nextMarkers, smartCutOptions: nextOptions, silenceSelections: nextSelections }
         }),
 
       removeProjectData: (projectId) =>
@@ -147,15 +183,17 @@ export const useEditingStore = create<EditingStore>()(
           const nextAnalysis = { ...s.analysis }
           const nextMarkers = { ...s.markers }
           const nextOptions = { ...s.smartCutOptions }
+          const nextSelections = { ...s.silenceSelections }
           for (const clipId of allClipIds) {
             delete nextAnalysis[clipId]
             delete nextMarkers[clipId]
             delete nextOptions[clipId]
+            delete nextSelections[clipId]
           }
-          return { analysis: nextAnalysis, markers: nextMarkers, smartCutOptions: nextOptions }
+          return { analysis: nextAnalysis, markers: nextMarkers, smartCutOptions: nextOptions, silenceSelections: nextSelections }
         }),
 
-      clearAll: () => set({ analysis: {}, markers: {}, smartCutOptions: {} }),
+      clearAll: () => set({ analysis: {}, markers: {}, smartCutOptions: {}, silenceSelections: {} }),
     }),
     { name: 'vedo-editing' },
   ),
