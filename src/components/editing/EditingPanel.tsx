@@ -19,9 +19,10 @@ function defaultOptions(_clipId: string): SmartCutOptions {
 }
 
 export function EditingPanel({ projectId, onConcatNeeded }: EditingPanelProps) {
-  const [selectedClipId, setSelectedClipId] = useState<string | null>(null)
   const [cutStatus, setCutStatus] = useState<'idle' | 'applying' | 'done' | 'error'>('idle')
   const [cutError, setCutError] = useState<string | undefined>()
+  const selectedClipId = useClipStore((s) => (s.selectedClipId[projectId] ?? null))
+  const setSelectedClipId = useClipStore((s) => s.setSelectedClipId)
 
   const clipsA = useClipStore((s) => s.getSlotClips(projectId, 'A'))
   const clipsB = useClipStore((s) => s.getSlotClips(projectId, 'B'))
@@ -160,7 +161,7 @@ export function EditingPanel({ projectId, onConcatNeeded }: EditingPanelProps) {
           id="edit-clip"
           value={selectedClipId ?? ''}
           onChange={(e) => {
-            setSelectedClipId(e.target.value || null)
+            setSelectedClipId(projectId, e.target.value || null)
             setCutStatus('idle')
             setCutError(undefined)
           }}

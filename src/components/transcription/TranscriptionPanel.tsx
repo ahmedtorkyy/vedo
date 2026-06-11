@@ -15,8 +15,9 @@ interface TranscriptionPanelProps {
 }
 
 export function TranscriptionPanel({ projectId }: TranscriptionPanelProps) {
-  const [selectedClipId, setSelectedClipId] = useState<string | null>(null)
   const [cleansing, setCleansing] = useState(false)
+  const selectedClipId = useClipStore((s) => (s.selectedClipId[projectId] ?? null))
+  const setSelectedClipId = useClipStore((s) => s.setSelectedClipId)
   const clipsA = useClipStore((s) => s.getSlotClips(projectId, 'A'))
   const clipsB = useClipStore((s) => s.getSlotClips(projectId, 'B'))
   const allClips = [...clipsA, ...clipsB]
@@ -62,7 +63,7 @@ export function TranscriptionPanel({ projectId }: TranscriptionPanelProps) {
         <select
           id="transcribe-clip"
           value={selectedClipId ?? ''}
-          onChange={(e) => setSelectedClipId(e.target.value || null)}
+          onChange={(e) => setSelectedClipId(projectId, e.target.value || null)}
           className="w-full rounded-md border border-gray-600 bg-gray-800 px-3 py-2 text-sm text-gray-200 focus:outline-none focus:ring-2 focus:ring-sky-500"
           aria-label="Select clip to transcribe"
         >

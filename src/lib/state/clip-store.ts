@@ -21,6 +21,8 @@ interface ClipState {
   setUploadProgress: (clipId: string, progress: number, status: UploadProgressEntry['status'], error?: string) => void;
   removeUploadProgress: (clipId: string) => void;
   setConcatStatus: (status: ClipState['concatJob']['status'], outputFilename?: string) => void;
+  selectedClipId: Record<string, string | null>;
+  setSelectedClipId: (projectId: string, clipId: string | null) => void;
   pendingSeek: number | null;
   setPendingSeek: (time: number) => void;
   clearPendingSeek: () => void;
@@ -33,6 +35,7 @@ export const useClipStore = create<ClipState>()(
       clips: {},
       uploads: {},
       concatJob: { status: 'idle' },
+      selectedClipId: {},
       pendingSeek: null,
 
       getSlotClips: (projectId, slot) => {
@@ -49,11 +52,17 @@ export const useClipStore = create<ClipState>()(
       addClip: (projectId, slot, clip) => set((state) => {
         const currentProject = state.clips[projectId] || { A: [], B: [] };
         const updatedSlot = [...currentProject[slot], clip];
+        const totalClips = updatedSlot.length + (slot === 'A' ? currentProject.B.length : currentProject.A.length);
+        const newSelected = { ...state.selectedClipId };
+        if (totalClips === 1) {
+          newSelected[projectId] = clip.id;
+        }
         return {
           clips: {
             ...state.clips,
             [projectId]: { ...currentProject, [slot]: updatedSlot }
-          }
+          },
+          selectedClipId: newSelected,
         };
       }),
 
@@ -75,11 +84,16 @@ export const useClipStore = create<ClipState>()(
           const currentProject = state.clips[projectId] || { A: [], B: [] };
           removed = currentProject[slot].find((c) => c.id === clipId);
           const updatedSlot = currentProject[slot].filter((c) => c.id !== clipId);
+          const newSelected = { ...state.selectedClipId };
+          if (newSelected[projectId] === clipId) {
+            newSelected[projectId] = null;
+          }
           return {
             clips: {
               ...state.clips,
               [projectId]: { ...currentProject, [slot]: updatedSlot }
-            }
+            },
+            selectedClipId: newSelected,
           };
         });
         return removed;
@@ -149,6 +163,9 @@ export const useClipStore = create<ClipState>()(
       }),
 
       setConcatStatus: (status, outputFilename) => set({ concatJob: { status, outputFilename } }),
+      setSelectedClipId: (projectId, clipId) => set((state) => ({
+        selectedClipId: { ...state.selectedClipId, [projectId]: clipId }
+      })),
       setPendingSeek: (time) => set({ pendingSeek: time }),
       clearPendingSeek: () => set({ pendingSeek: null }),
 
@@ -166,7 +183,10 @@ export const useClipStore = create<ClipState>()(
           }
         }
 
-        return { clips: nextClips, uploads: nextUploads }
+        const nextSelectedClipId = { ...state.selectedClipId }
+        delete nextSelectedClipId[projectId]
+
+        return { clips: nextClips, uploads: nextUploads, selectedClipId: nextSelectedClipId }
       }),
     }),
     {

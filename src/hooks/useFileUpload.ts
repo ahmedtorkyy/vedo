@@ -23,25 +23,39 @@ export function useFileUpload() {
   const addClip = useClipStore((s) => s.addClip)
 
   function getVideoDimensions(file: File): Promise<{ width: number; height: number; duration: number }> {
-    return new Promise((resolve) => {
+    const TIMEOUT_MS = 5000
+    const defaults = { width: 1920, height: 1080, duration: 0 }
+
+    const meta = new Promise<{ width: number; height: number; duration: number }>((resolve) => {
       const video = document.createElement('video')
       video.preload = 'metadata'
+      let cleaned = false
+      function clean() {
+        if (cleaned) return
+        cleaned = true
+        URL.revokeObjectURL(video.src)
+        video.remove()
+      }
       video.onloadedmetadata = () => {
         resolve({
           width: video.videoWidth || 1920,
           height: video.videoHeight || 1080,
           duration: video.duration || 0,
         })
-        URL.revokeObjectURL(video.src)
-        video.remove()
+        clean()
       }
       video.onerror = () => {
-        resolve({ width: 1920, height: 1080, duration: 0 })
-        URL.revokeObjectURL(video.src)
-        video.remove()
+        resolve(defaults)
+        clean()
       }
       video.src = URL.createObjectURL(file)
     })
+
+    const timeout = new Promise<{ width: number; height: number; duration: number }>((resolve) => {
+      setTimeout(() => resolve(defaults), TIMEOUT_MS)
+    })
+
+    return Promise.race([meta, timeout])
   }
 
   const uploadFiles = useCallback(async (options: UploadOptions) => {
@@ -99,7 +113,6 @@ export function useFileUpload() {
           safeName,
           file,
           (pct) => {
-            setUploadProgress(clipId, pct, pct < 100 ? 'uploading' : 'done')
             onProgress?.(file.name, pct)
           },
         )
@@ -120,6 +133,7 @@ export function useFileUpload() {
           videoHeight: dims.height,
         })
 
+        setUploadProgress(clipId, 100, 'done')
         onFileComplete?.(file.name)
       } catch (err) {
         setUploadProgress(clipId, 0, 'error', err instanceof Error ? err.message : 'OPFS write failed.')
