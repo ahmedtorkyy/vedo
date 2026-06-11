@@ -20,6 +20,7 @@ export function SlotB({ projectId, onPlayClip, onConcatNeeded }: SlotBProps) {
   const removeClip = useClipStore((s) => s.removeClip)
   const removeUploadProgress = useClipStore((s) => s.removeUploadProgress)
   const toggleMute = useClipStore((s) => s.toggleMute)
+  const reorderClip = useClipStore((s) => s.reorderClip)
   const { uploadFiles } = useFileUpload()
   const { announce } = useAriaAnnouncer()
   const lastPctRef = useRef<Record<string, number>>({})
@@ -54,6 +55,22 @@ export function SlotB({ projectId, onPlayClip, onConcatNeeded }: SlotBProps) {
   const handlePlay = useCallback((clipId: string) => {
     onPlayClip?.(clipId)
   }, [onPlayClip])
+
+  const handleMoveUp = useCallback((clipId: string) => {
+    const idx = clips.findIndex((c) => c.id === clipId)
+    if (idx <= 0) return
+    reorderClip(projectId, 'B', clipId, 'up')
+    announce(`Overlay ${idx + 1} of ${clips.length} moved to position ${idx}`)
+    onConcatNeeded?.()
+  }, [projectId, clips, reorderClip, announce, onConcatNeeded])
+
+  const handleMoveDown = useCallback((clipId: string) => {
+    const idx = clips.findIndex((c) => c.id === clipId)
+    if (idx === -1 || idx >= clips.length - 1) return
+    reorderClip(projectId, 'B', clipId, 'down')
+    announce(`Overlay ${idx + 1} of ${clips.length} moved to position ${idx + 2}`)
+    onConcatNeeded?.()
+  }, [projectId, clips, reorderClip, announce, onConcatNeeded])
 
   const handleMute = useCallback((clipId: string) => {
     toggleMute(projectId, 'B', clipId)
@@ -110,6 +127,8 @@ export function SlotB({ projectId, onPlayClip, onConcatNeeded }: SlotBProps) {
                 onPlay={handlePlay}
                 onMute={handleMute}
                 onDelete={handleDelete}
+                onMoveUp={handleMoveUp}
+                onMoveDown={handleMoveDown}
               />
             </li>
           ))}

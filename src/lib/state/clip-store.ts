@@ -12,6 +12,7 @@ interface ClipState {
   addClip: (projectId: string, slot: 'A' | 'B', clip: Clip) => void;
   removeClip: (projectId: string, slot: 'A' | 'B', clipId: string) => Clip | undefined;
   toggleMute: (projectId: string, slot: 'A' | 'B', clipId: string) => void;
+  reorderClip: (projectId: string, slot: 'A' | 'B', clipId: string, direction: 'up' | 'down') => void;
   updateClip: (projectId: string, slot: 'A' | 'B', clipId: string, updates: Partial<Clip>) => void;
   initUpload: (entry: UploadProgressEntry) => void;
   setUploadProgress: (clipId: string, progress: number, status: UploadProgressEntry['status'], error?: string) => void;
@@ -78,6 +79,22 @@ export const useClipStore = create<ClipState>()(
           clips: {
             ...state.clips,
             [projectId]: { ...currentProject, [slot]: updatedSlot }
+          }
+        };
+      }),
+
+      reorderClip: (projectId, slot, clipId, direction) => set((state) => {
+        const currentProject = state.clips[projectId] || { A: [], B: [] };
+        const arr = [...currentProject[slot]];
+        const idx = arr.findIndex((c) => c.id === clipId);
+        if (idx === -1) return {};
+        const swapIdx = direction === 'up' ? idx - 1 : idx + 1;
+        if (swapIdx < 0 || swapIdx >= arr.length) return {};
+        [arr[idx], arr[swapIdx]] = [arr[swapIdx], arr[idx]];
+        return {
+          clips: {
+            ...state.clips,
+            [projectId]: { ...currentProject, [slot]: arr }
           }
         };
       }),

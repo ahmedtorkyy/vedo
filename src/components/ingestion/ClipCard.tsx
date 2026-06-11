@@ -7,9 +7,11 @@ interface ClipCardProps {
   onPlay: (clipId: string) => void
   onMute: (clipId: string) => void
   onDelete: (clipId: string) => void
+  onMoveUp?: (clipId: string) => void
+  onMoveDown?: (clipId: string) => void
 }
 
-export function ClipCard({ clip, index, total, onPlay, onMute, onDelete }: ClipCardProps) {
+export function ClipCard({ clip, index, total, onPlay, onMute, onDelete, onMoveUp, onMoveDown }: ClipCardProps) {
   const sizeLabel = clip.fileSize > 1_048_576
     ? `${(clip.fileSize / 1_048_576).toFixed(1)} MB`
     : `${(clip.fileSize / 1024).toFixed(0)} KB`
@@ -33,6 +35,35 @@ export function ClipCard({ clip, index, total, onPlay, onMute, onDelete }: ClipC
       </div>
 
       <div className="flex shrink-0 gap-1">
+        {onMoveUp && (
+          <button
+            type="button"
+            onClick={() => onMoveUp(clip.id)}
+            disabled={index === 0}
+            aria-label={`Move clip ${index + 1} up to position ${index}`}
+            className="rounded p-1.5 text-gray-400 hover:bg-gray-700 hover:text-gray-200 focus:outline-none focus:ring-2 focus:ring-sky-500 disabled:opacity-30 disabled:cursor-not-allowed"
+            title="Move up"
+          >
+            <svg className="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 15l7-7 7 7" />
+            </svg>
+          </button>
+        )}
+        {onMoveDown && (
+          <button
+            type="button"
+            onClick={() => onMoveDown(clip.id)}
+            disabled={index === total - 1}
+            aria-label={`Move clip ${index + 1} down to position ${index + 2}`}
+            className="rounded p-1.5 text-gray-400 hover:bg-gray-700 hover:text-gray-200 focus:outline-none focus:ring-2 focus:ring-sky-500 disabled:opacity-30 disabled:cursor-not-allowed"
+            title="Move down"
+          >
+            <svg className="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
+            </svg>
+          </button>
+        )}
+
         <button
           type="button"
           onClick={() => onPlay(clip.id)}
