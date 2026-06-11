@@ -31,10 +31,11 @@ export interface ContentAnalysis {
     mainContent: { start: number; end: number } | null
     conclusion: { start: number; end: number } | null
   }
-  importantMoments: { time: number; description: string; confidence: number }[]
+  importantMoments: { time: number; description: string; confidence: number; source?: 'visual' | 'transcript' }[]
   emotionalMoments: { time: number; emotion: string; intensity: number }[]
   keySubjects: string[]
   keyObjects: string[]
+  visualAnalysis?: import('../vision/vision-types').VisualAnalysis
 }
 
 export interface EditDecision {

@@ -10,7 +10,7 @@ const ZOOM_PATTERNS: { regex: RegExp; value: ZoomLevel }[] = [
   { regex: /\bzoom\s*(?:in|out)?\s*(?:subtle|soft|gentle|light|minimal)/i, value: 'soft' },
   { regex: /\b(?:soft|gentle|subtle)\s*(?:camera|movement|motion)\b/i, value: 'soft' },
   { regex: /\b(?:dynamic|active|lively)\s*(?:camera|movement|motion)\b/i, value: 'dynamic' },
-  { regex: /\b(?:punch.?in|punch.?out)\b/i, value: 'aggressive' },
+  { regex: /\b(?:punch.?ins?|punch.?outs?)\b/i, value: 'aggressive' },
   { regex: /(?:تكبير|تقريب|زوم)\s*(?:قوي|كبير|عنيف|حاد)/i, value: 'aggressive' },
   { regex: /(?:تكبير|تقريب|زوم)\s*(?:بسيط|خفيف|ناعم|هادئ)/i, value: 'soft' },
   { regex: /(?:تكبير|تقريب|زوم)\s*(?:متوسط|ديناميكي)?/i, value: 'dynamic' },
@@ -201,7 +201,7 @@ const DURATION_PATTERNS: RegExp[] = [
 ]
 
 const ZOOM_CADENCE_PATTERNS: RegExp[] = [
-  /every\s+(\d+(?:\.\d+)?)\s*(?:to|-)\s*(\d+(?:\.\d+)?)\s*(?:seconds?|sec|s)\b/i,
+  /every\s+(\d+(?:\.\d+)?)\s*(?:to|[-–—])\s*(\d+(?:\.\d+)?)\s*(?:seconds?|sec|s)\b/i,
   /every\s+(\d+(?:\.\d+)?)\s*(?:seconds?|sec|s)\b/i,
 ]
 

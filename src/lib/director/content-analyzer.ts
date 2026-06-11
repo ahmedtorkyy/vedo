@@ -1,4 +1,5 @@
 import type { ContentAnalysis, HookInfo } from './types'
+import type { VisualAnalysis } from '../vision/vision-types'
 
 const CATEGORY_KEYWORDS: Record<string, string[]> = {
   tutorial: [
@@ -95,6 +96,8 @@ export function analyzeContent(
   segments: { start: number; end: number; text: string }[],
   duration: number,
   clipFileName?: string,
+  visualEvents?: { time: number; description: string; confidence: number; source?: 'visual' | 'transcript' }[],
+  visualAnalysis?: VisualAnalysis,
 ): ContentAnalysis {
   const fullText = segments.map((s) => s.text.trim()).join(' ').toLowerCase()
 
@@ -102,10 +105,14 @@ export function analyzeContent(
   const category = inferCategory(fullText)
   const keywords = extractKeywords(fullText, 15)
   const structure = analyzeStructure(segments, duration, fullText)
-  const importantMoments = detectImportantMoments(segments, fullText, keywords)
+  let importantMoments = detectImportantMoments(segments, fullText, keywords)
   const emotionalMoments = detectEmotionalMoments(segments)
   const keySubjects = extractSubjects(segments, fullText)
   const keyObjects = extractObjects(fullText, keywords, segments)
+
+  if (visualEvents && visualEvents.length > 0) {
+    importantMoments = mergeImportantMoments(importantMoments, visualEvents)
+  }
 
   return {
     topic,
@@ -116,7 +123,28 @@ export function analyzeContent(
     emotionalMoments,
     keySubjects,
     keyObjects,
+    visualAnalysis,
   }
+}
+
+export function mergeImportantMoments(
+  transcript: { time: number; description: string; confidence: number }[],
+  visual: { time: number; description: string; confidence: number; source?: 'visual' | 'transcript' }[],
+): { time: number; description: string; confidence: number; source?: 'visual' | 'transcript' }[] {
+  const merged: { time: number; description: string; confidence: number; source?: 'visual' | 'transcript' }[] = []
+
+  for (const v of visual) {
+    merged.push({ ...v, source: 'visual' })
+  }
+
+  for (const t of transcript) {
+    const dupe = merged.some((m) => Math.abs(m.time - t.time) < 1.5)
+    if (!dupe) {
+      merged.push({ ...t, source: 'transcript' })
+    }
+  }
+
+  return merged.sort((a, b) => a.time - b.time)
 }
 
 function inferTopic(text: string, fileName?: string): string {

@@ -147,7 +147,7 @@ export function assignSlotsToOverlays(
   slots: CandidateSlot[],
   overlayClips: { id: string; fileName: string; duration: number; index: number; totalOverlays: number }[],
   segments: { start: number; end: number; text: string }[],
-  _contentAnalysis: ContentAnalysis,
+  contentAnalysis: ContentAnalysis,
   timelineDuration: number,
 ): { clipId: string; startTime: number; endTime: number; reason: string; confidence: number }[] {
   const assignments: { clipId: string; startTime: number; endTime: number; reason: string; confidence: number }[] = []
@@ -183,12 +183,14 @@ export function assignSlotsToOverlays(
       const endTime = Math.min(slot.start + overlayFit, timelineDuration)
       if (endTime <= slot.start) continue
 
+      const visualBonus = computeVisualBonus(slot, contentAnalysis)
+
       assignments.push({
         clipId: oc.id,
         startTime: slot.start,
         endTime,
-        reason: slot.reason + (bonusScore > 0 ? ` (keyword bonus: +${bonusScore})` : ''),
-        confidence: Math.min(1, (slot.priority + bonusScore) / 20),
+        reason: slot.reason + (bonusScore > 0 ? ` (keyword bonus: +${bonusScore})` : '') + (visualBonus > 0 ? ` (visual match: +${visualBonus})` : ''),
+        confidence: Math.min(1, (slot.priority + bonusScore + visualBonus) / 20),
       })
       usedRanges.push({ start: slot.start, end: endTime })
       assigned = true
@@ -211,6 +213,30 @@ export function assignSlotsToOverlays(
   }
 
   return assignments
+}
+
+function computeVisualBonus(
+  slot: CandidateSlot,
+  contentAnalysis: ContentAnalysis,
+): number {
+  let bonus = 0
+
+  const visualMoments = contentAnalysis.importantMoments.filter(
+    (m) => m.source === 'visual' && m.time >= slot.start && m.time <= slot.end,
+  )
+
+  for (const vm of visualMoments) {
+    bonus += Math.round(vm.confidence * 5)
+  }
+
+  if (contentAnalysis.visualAnalysis) {
+    const relevantObjects = contentAnalysis.visualAnalysis.objectDetections.filter(
+      (o) => o.time >= slot.start && o.time <= slot.end && o.confidence > 0.6,
+    )
+    bonus += relevantObjects.length * 3
+  }
+
+  return bonus
 }
 
 export function determinePlacement(

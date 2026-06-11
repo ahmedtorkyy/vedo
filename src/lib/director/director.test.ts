@@ -316,8 +316,59 @@ describe('parseInstructions zoom cadence', () => {
     expect(result.zoomCadence).toBe(2.5)
   })
 
+  it('detects every 2–3 seconds with en-dash', () => {
+    const result = parseInstructions('zoom every 2–3 seconds')
+    expect(result.zoomCadence).toBe(2.5)
+  })
+
+  it('detects every 2—3 seconds with em-dash', () => {
+    const result = parseInstructions('zoom every 2—3 seconds')
+    expect(result.zoomCadence).toBe(2.5)
+  })
+
   it('returns null when no cadence mentioned', () => {
     expect(parseInstructions('dynamic zoom').zoomCadence).toBeNull()
+  })
+})
+
+describe('parseInstructions punch plurals', () => {
+  it('detects punch-ins as aggressive zoom', () => {
+    expect(parseInstructions('punch-ins on the product').zoom).toBe('aggressive')
+  })
+
+  it('detects punch-outs as aggressive zoom', () => {
+    expect(parseInstructions('punch-outs for wide shots').zoom).toBe('aggressive')
+  })
+
+  it('detects singular punch-in still works', () => {
+    expect(parseInstructions('punch-in on the product').zoom).toBe('aggressive')
+  })
+
+  it('detects singular punch-out still works', () => {
+    expect(parseInstructions('punch-out for context').zoom).toBe('aggressive')
+  })
+})
+
+describe('parseInstructions regression — Ahmed\'s verbatim template', () => {
+  const input = 'punch outs every 2–3 seconds. multiple cameras. let the director choose the best takes'
+  const result = parseInstructions(input)
+
+  it('detects aggressive zoom from punch outs', () => {
+    expect(result.zoom).toBe('aggressive')
+  })
+
+  it('detects zoom cadence from 2–3 seconds', () => {
+    expect(result.zoomCadence).toBe(2.5)
+  })
+
+  it('detects multicam from multiple cameras', () => {
+    expect(result.multicam).toBe(true)
+  })
+
+  it('leaves only the genuinely vision-dependent clause unmatched', () => {
+    expect(result.unmatchedPhrases).toContain('let the director choose the best takes')
+    expect(result.unmatchedPhrases).not.toContain('punch outs every 2–3 seconds')
+    expect(result.unmatchedPhrases).not.toContain('multiple cameras')
   })
 })
 
