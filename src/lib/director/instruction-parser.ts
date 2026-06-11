@@ -138,11 +138,13 @@ const MULTICAM_PATTERNS: { regex: RegExp; value: boolean }[] = [
   { regex: /\b(?:different\s*angles|camera\s*switch)\b/i, value: true },
 ]
 
-const CLAUSE_BOUNDARY = '(?:keep|make|use|add|set|with|without|and|but|under|then|also|please|transition|zoom|effect|overlay|caption|speed|audio|slow|fast|remove|cut|skip|delete|focus|part|section|segment)'
+const CLAUSE_BOUNDARY = '(?:keep|make|use|add|set|with|without|and|but|under|then|also|please|transition|zoom|effect|overlay|caption|speed|audio|slow|fast|remove|cut|skip|delete|focus|section|segment)'
 const CONTENT_REF_PATTERNS: RegExp[] = [
   new RegExp(`\\bremove\\s+the\\s+part\\s+about\\s+(.+?)(?:\\.|,|;|\\b${CLAUSE_BOUNDARY}|$)`, 'gi'),
+  new RegExp(`\\bremove\\s+the\\s+part\\s+where\\s+(?:I\\s+)?(?:talk|speak|mention)\\s+about\\s+(.+?)(?:\\.|,|;|\\b${CLAUSE_BOUNDARY}|$)`, 'gi'),
+  new RegExp(`\\bremove\\s+the\\s+part\\s+where\\s+(.+?)(?:\\.|,|;|\\b${CLAUSE_BOUNDARY}|$)`, 'gi'),
   new RegExp(`\\bcut\\s+(?:the\\s+)?(?:part|section|segment)\\s+(?:about|on|of)\\s+(.+?)(?:\\.|,|;|\\b${CLAUSE_BOUNDARY}|$)`, 'gi'),
-  new RegExp(`\\b(?:skip|delete|remove)\\s+(.+?)(?:\\s+(?:part|section|segment)|\\.|,|;|\\b${CLAUSE_BOUNDARY}|$)`, 'gi'),
+  new RegExp(`\\b(?:skip|delete|remove)\\s+(.+?)(?:\\s+(?:section|segment)|\\.|,|;|\\b${CLAUSE_BOUNDARY}|$)`, 'gi'),
   new RegExp(`\\b(?:keep\\s+only|focus\\s+on)\\s+(.+?)(?:\\.|,|;|\\b${CLAUSE_BOUNDARY}|$)`, 'gi'),
 ]
 
@@ -151,6 +153,8 @@ const CONTENT_REF_STOPWORDS = new Set([
   'and', 'or', 'but', 'if', 'so', 'then', 'just', 'also', 'please', 'with', 'without',
   'under', 'keep', 'make', 'use', 'add', 'set', 'remove', 'cut', 'skip', 'delete',
   'get', 'go', 'do', 'be', 'have', 'will', 'can', 'would', 'could', 'should', 'may',
+  'about', 'on', 'of', 'for', 'in', 'at', 'by', 'to', 'from', 'as', 'into',
+  'part', 'section', 'segment',
 ])
 
 const CAPTION_PATTERNS: { regex: RegExp; value: boolean }[] = [
@@ -240,7 +244,6 @@ function findContentReferences(text: string): string[] {
       }
       phrase = words.join(' ')
       if (phrase.length < 3) continue
-      if (phrase.split(/\s+/).length < 2) continue
       if (/^\d+$/.test(phrase)) continue
       if (!refs.includes(phrase)) refs.push(phrase)
     }
