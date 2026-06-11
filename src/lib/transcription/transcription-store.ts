@@ -29,7 +29,8 @@ export const useTranscriptionStore = create<TranscriptionStore>()(
         set((state) => ({
           results: {
             ...state.results,
-            [clipId]: { ...(state.results[clipId] ?? { clipId, status: 'idle', segments: [] }), status },
+            // Starting a new attempt clears any stale error from a previous one.
+            [clipId]: { ...(state.results[clipId] ?? { clipId, status: 'idle', segments: [] }), status, error: undefined },
           },
         })),
 
@@ -42,6 +43,7 @@ export const useTranscriptionStore = create<TranscriptionStore>()(
               status: 'done',
               segments,
               language,
+              error: undefined,
             },
           },
           backupSegments: state.backupSegments[clipId]

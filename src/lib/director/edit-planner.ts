@@ -47,10 +47,22 @@ export function globalToLocal(
 export function splitRegionAcrossClips(
   globalStart: number,
   globalEnd: number,
-  _clips: { id: string; fileName: string; duration: number; slot: 'A' | 'B' }[],
+  clips: { id: string; fileName: string; duration: number; slot: 'A' | 'B' }[],
   clipOffsets: { clipId: string; offsetStart: number; offsetEnd: number }[] | undefined,
 ): { clipId: string; localStart: number; localEnd: number }[] {
   if (!clipOffsets || clipOffsets.length === 0) {
+    // Single-clip (or offset-less) projects: the global timeline IS the clip
+    // timeline. Previously this returned [] which silently disabled every
+    // region-based decision (trims, zooms, overlays) for single-clip projects.
+    const mainClips = clips.filter((c) => c.slot === 'A')
+    if (mainClips.length === 1) {
+      const clip = mainClips[0]
+      const localStart = Math.max(0, Math.min(globalStart, clip.duration))
+      const localEnd = Math.max(0, Math.min(globalEnd, clip.duration))
+      if (localEnd > localStart) {
+        return [{ clipId: clip.id, localStart, localEnd }]
+      }
+    }
     return []
   }
 
@@ -123,7 +135,50 @@ export function createEditPlan(input: PlannerInput): EditPlan {
     }
   }
 
-  if (input.contentAnalysis.structure.hook && style.zoom !== 'soft') {
+  // Cadence/multicam mode: the user explicitly asked for rhythmic zoom
+  // changes ("punch-ins every 2-3 seconds", "simulate multiple cameras").
+  // Explicit directives win over project-length caution, and cadence
+  // scheduling replaces hook/emphasis zooms to avoid overlapping zoom windows.
+  const cadenceMode = overrides.zoomCadence !== null || overrides.multicam === true
+
+  if (cadenceMode) {
+    const cadence = overrides.zoomCadence ?? 2.5
+    // Framing levels cycled so consecutive segments never repeat,
+    // simulating cameras at different distances.
+    const levels: ('soft' | 'dynamic' | 'aggressive')[] =
+      style.zoom === 'aggressive'
+        ? ['aggressive', 'soft', 'dynamic']
+        : ['dynamic', 'soft', 'aggressive']
+    const MAX_CADENCE_ZOOMS = 60
+    let levelIdx = 0
+    let zoomCount = 0
+
+    for (const clip of input.clips) {
+      if (clip.slot !== 'A') continue
+      let t = Math.min(0.3, clip.duration * 0.05)
+      while (t < clip.duration - 0.5 && zoomCount < MAX_CADENCE_ZOOMS) {
+        const segEnd = Math.min(clip.duration, t + cadence * 0.8)
+        const level = levels[levelIdx % levels.length]
+        decisions.push({
+          id: `zoom-cadence-${clip.id}-${t.toFixed(1)}`,
+          type: 'zoom',
+          clipId: clip.id,
+          slot: 'A',
+          startTime: t,
+          endTime: segEnd,
+          parameters: { intensity: level, duration: segEnd - t },
+          justification: overrides.multicam
+            ? `Multicam framing: ${level} punch-in at ${t.toFixed(1)}s (camera distance change every ${cadence.toFixed(1)}s)`
+            : `Cadence zoom: ${level} at ${t.toFixed(1)}s (every ${cadence.toFixed(1)}s)`,
+        })
+        levelIdx++
+        zoomCount++
+        t += cadence
+      }
+    }
+  }
+
+  if (!cadenceMode && input.contentAnalysis.structure.hook && style.zoom !== 'soft') {
     const hookStart = input.contentAnalysis.structure.hook.start
     const hookEnd = input.contentAnalysis.structure.hook.end
     const hookSplits = splitRegionAcrossClips(hookStart, hookEnd, input.clips, input.clipOffsets)
@@ -149,6 +204,7 @@ export function createEditPlan(input: PlannerInput): EditPlan {
   }
 
   for (const moment of input.retention.highValueMoments.slice(0, 5)) {
+    if (cadenceMode) break
     if (style.motionIntensity < 0.3) continue
     const momentClip = getClipAtTime(input.clips, input.clipOffsets, moment.time)
     if (momentClip) {
@@ -187,6 +243,7 @@ export function createEditPlan(input: PlannerInput): EditPlan {
   const mainClips = input.clips.filter((c) => c.slot === 'A')
 
   if (overlayClips.length > 0 && style.overlayFrequency !== 'rare') {
+    const usedOverlaySlots: { start: number; end: number }[] = []
     for (let oi = 0; oi < overlayClips.length; oi++) {
       const overlay = overlayClips[oi]
       const overlayDecisions: OverlayDecision[] = determineOverlayDecisions({
@@ -201,8 +258,12 @@ export function createEditPlan(input: PlannerInput): EditPlan {
           : mainClips.reduce((sum, c) => sum + c.duration, 0),
         style,
         overrides,
-        usedSlots: [],
+        usedSlots: usedOverlaySlots,
       })
+
+      for (const od of overlayDecisions) {
+        usedOverlaySlots.push({ start: od.startTime, end: od.endTime })
+      }
 
       for (const od of overlayDecisions) {
         const splits = splitRegionAcrossClips(od.startTime, od.endTime, input.clips, input.clipOffsets)

@@ -1199,3 +1199,112 @@ describe('determineOverlayDecisions', () => {
     expect(decisions[0].reason).toContain('Fallback')
   })
 })
+
+// --- Single-clip projects: region mapping, cadence zooms, overlay placement ---
+describe('single-clip project planning (regression)', () => {
+  const singleClip = [
+    { id: 'solo', fileName: 'review.mp4', duration: 30, slot: 'A' as const },
+  ]
+
+  const emptyAnalysis: ContentAnalysis = {
+    topic: 'Food', category: 'food-review', keywords: [],
+    structure: { hook: null, setup: null, mainContent: null, conclusion: null },
+    importantMoments: [], emotionalMoments: [], keySubjects: [], keyObjects: [],
+  }
+
+  const emptyRetention: RetentionAnalysis = {
+    hook: null, lowEnergyRegions: [], highValueMoments: [],
+    repetitiveRegions: [], topicChanges: [],
+  }
+
+  it('splitRegionAcrossClips maps regions onto a single clip without offsets', () => {
+    const result = splitRegionAcrossClips(2, 5, singleClip, undefined)
+    expect(result).toHaveLength(1)
+    expect(result[0]).toEqual({ clipId: 'solo', localStart: 2, localEnd: 5 })
+  })
+
+  it('splitRegionAcrossClips clamps to clip duration for single clip', () => {
+    const result = splitRegionAcrossClips(25, 40, singleClip, undefined)
+    expect(result).toHaveLength(1)
+    expect(result[0].localEnd).toBe(30)
+  })
+
+  it('cadence/multicam directives produce alternating zooms even on short single clips', () => {
+    const plan = createEditPlan({
+      projectId: 'p-cadence',
+      instructions: 'aggressive punch-ins every 2-3 seconds simulating multiple cameras at different distances',
+      selectedStyle: 'tiktok',
+      clips: [{ id: 'solo', fileName: 'short.mp4', duration: 9, slot: 'A' as const }],
+      contentAnalysis: emptyAnalysis,
+      retention: emptyRetention,
+      transcription: [{ start: 0, end: 8, text: 'talking about the food the whole time' }],
+      clipOffsets: undefined,
+    })
+
+    const zooms = plan.decisions.filter((d) => d.type === 'zoom')
+    expect(zooms.length).toBeGreaterThanOrEqual(3)
+
+    // never two identical framing levels back to back (multicam simulation)
+    for (let i = 1; i < zooms.length; i++) {
+      expect(zooms[i].parameters.intensity).not.toBe(zooms[i - 1].parameters.intensity)
+    }
+
+    // zoom windows stay inside the clip
+    for (const z of zooms) {
+      expect(z.startTime).toBeGreaterThanOrEqual(0)
+      expect(z.endTime).toBeLessThanOrEqual(9)
+    }
+  })
+
+  it('places overlays on single-clip projects (previously silently dropped)', () => {
+    const plan = createEditPlan({
+      projectId: 'p-overlay-single',
+      instructions: 'add overlays',
+      selectedStyle: 'food-review',
+      clips: [
+        { id: 'solo', fileName: 'review.mp4', duration: 30, slot: 'A' as const },
+        { id: 'ov1', fileName: 'broll.mp4', duration: 5, slot: 'B' as const },
+      ],
+      contentAnalysis: emptyAnalysis,
+      retention: emptyRetention,
+      transcription: [{ start: 0, end: 25, text: 'a long single talking segment for the whole clip' }],
+      clipOffsets: undefined,
+    })
+
+    const overlays = plan.decisions.filter((d) => d.type === 'overlay')
+    expect(overlays.length).toBeGreaterThanOrEqual(1)
+    expect(overlays[0].clipId).toBe('solo')
+    expect(overlays[0].overlayClipId).toBe('ov1')
+    expect(overlays[0].endTime).toBeLessThanOrEqual(30)
+  })
+
+  it('spreads multiple overlays instead of stacking them on the same slot', () => {
+    const plan = createEditPlan({
+      projectId: 'p-overlay-spread',
+      instructions: 'add overlays',
+      selectedStyle: 'food-review',
+      clips: [
+        { id: 'solo', fileName: 'review.mp4', duration: 30, slot: 'A' as const },
+        { id: 'ov1', fileName: 'broll-one.mp4', duration: 4, slot: 'B' as const },
+        { id: 'ov2', fileName: 'broll-two.mp4', duration: 4, slot: 'B' as const },
+      ],
+      contentAnalysis: emptyAnalysis,
+      retention: emptyRetention,
+      transcription: [{ start: 0, end: 25, text: 'a long single talking segment for the whole clip' }],
+      clipOffsets: undefined,
+    })
+
+    const overlays = plan.decisions.filter((d) => d.type === 'overlay')
+    expect(overlays.length).toBeGreaterThanOrEqual(2)
+
+    const byOverlay: Record<string, { start: number; end: number }> = {}
+    for (const o of overlays) {
+      if (o.overlayClipId) byOverlay[o.overlayClipId] = { start: o.startTime, end: o.endTime }
+    }
+    const ranges = Object.values(byOverlay)
+    expect(ranges.length).toBe(2)
+    const [a, b] = ranges
+    const overlapping = a.start < b.end && b.start < a.end
+    expect(overlapping).toBe(false)
+  })
+})

@@ -262,7 +262,10 @@ export function determinePlacement(
 
 export function determineOverlayDecisions(input: OverlayInput): OverlayDecision[] {
   const decisions: OverlayDecision[] = []
+  // Respect slots already taken by previously placed overlays so multiple
+  // overlays spread across the timeline instead of stacking on the same moment.
   const slots = findCandidateSlots(input.segments, input.contentAnalysis, input.timelineDuration)
+    .filter((s) => !input.usedSlots.some((r) => r.start < s.end && r.end > s.start))
 
   const entries = [{
     id: input.overlayClip.id,
@@ -328,7 +331,15 @@ export function determineOverlayDecisions(input: OverlayInput): OverlayDecision[
   }
 
   if (decisions.length === 0) {
-    const midPoint = input.timelineDuration * 0.3
+    // Spread fallback positions by overlay index so unmatched overlays
+    // distribute across the timeline instead of piling at the same spot.
+    const spread = input.totalOverlays > 1
+      ? 0.15 + (0.7 * input.index) / Math.max(1, input.totalOverlays - 1)
+      : 0.3
+    const midPoint = Math.max(0, Math.min(
+      input.timelineDuration * spread,
+      input.timelineDuration - MIN_OVERLAY_DURATION,
+    ))
     decisions.push({
       overlayClipId: input.overlayClip.id,
       startTime: midPoint,
