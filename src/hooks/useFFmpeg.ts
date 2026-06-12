@@ -1,5 +1,6 @@
 import { useCallback } from 'react'
 import { loadFFmpeg, concatClips } from '../lib/ffmpeg'
+import { initNativeFFmpeg } from '../lib/ffmpeg/native'
 import { useClipStore } from '../lib/state'
 
 export function useFFmpeg() {
@@ -14,6 +15,8 @@ export function useFFmpeg() {
     }
 
     try {
+      // Detect the desktop app's native ffmpeg before choosing a path.
+      await initNativeFFmpeg()
       await loadFFmpeg()
       await concatClips(projectId, clips)
       store.setConcatStatus('done')

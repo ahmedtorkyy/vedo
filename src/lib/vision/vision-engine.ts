@@ -101,7 +101,7 @@ export class VisionEngine {
         return
       }
 
-      if (msg.type === 'unloaded') { }
+      if (msg.type === 'unloaded') { /* nothing to do — state already cleared */ }
     }
   }
 

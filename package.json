@@ -14,6 +14,7 @@
     "preview": "vite preview",
     "app": "npm run build && electron .",
     "app:fast": "electron .",
+    "fetch-ffmpeg": "node scripts/fetch-ffmpeg.mjs",
     "dist": "npm run build && electron-builder --win"
   },
   "dependencies": {
@@ -46,7 +47,14 @@
     },
     "files": [
       "dist/**/*",
-      "electron/**/*"
+      "electron/**/*",
+      "!electron/bin/**"
+    ],
+    "extraResources": [
+      {
+        "from": "electron/bin",
+        "to": "bin"
+      }
     ],
     "win": {
       "target": [

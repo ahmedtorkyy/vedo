@@ -60,7 +60,7 @@ export async function createDetectors(): Promise<DetectorSet> {
         runningMode: 'IMAGE',
         minDetectionConfidence: 0.5,
       })
-    } catch { }
+    } catch { /* model load failed — capability fallback handles it */ }
   }
 
   try {
@@ -76,7 +76,7 @@ export async function createDetectors(): Promise<DetectorSet> {
         baseOptions: { modelAssetPath: objectDetectorModelPath(), delegate: 'CPU' },
         runningMode: 'IMAGE',
       })
-    } catch { }
+    } catch { /* model load failed — capability fallback handles it */ }
   }
 
   return detectors

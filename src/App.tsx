@@ -16,6 +16,7 @@ import { AriaAnnouncerProvider, useAriaAnnouncer } from './components/accessibil
 import { AudioOrchestrator } from './lib/audio'
 import { saveSessionSnapshot, restoreSession } from './lib/session/session-recovery'
 import { backfillClipMetadata } from './lib/state/clip-backfill'
+import { initNativeFFmpeg } from './lib/ffmpeg/native'
 
 type WorkspaceTab = 'slota' | 'slotb' | 'preview' | 'transcription' | 'editing' | 'director' | 'timeline' | 'export'
 const workspaceRef = { current: null as HTMLDivElement | null }
@@ -307,6 +308,7 @@ function App() {
   useEffect(() => {
     restoreSession()
     backgroundLoadModel()
+    initNativeFFmpeg()
     return () => { AudioOrchestrator.getInstance().dispose() }
   }, [])
 

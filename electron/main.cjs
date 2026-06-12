@@ -4,12 +4,99 @@
 // in a secure context (OPFS, workers, wasm all behave exactly as in Chrome),
 // and NVDA accessibility is inherited from Chromium unchanged.
 
-const { app, BrowserWindow, protocol, shell } = require('electron')
+const { app, BrowserWindow, protocol, shell, ipcMain } = require('electron')
 const path = require('node:path')
 const fs = require('node:fs')
+const { spawn } = require('node:child_process')
 
 const SCHEME = 'app'
 const DIST = path.join(__dirname, '..', 'dist')
+
+// --- Native ffmpeg (stage 2) ---
+
+function ffmpegBinaryPath() {
+  const name = process.platform === 'win32' ? 'ffmpeg.exe' : 'ffmpeg'
+  return app.isPackaged
+    ? path.join(process.resourcesPath, 'bin', name)
+    : path.join(__dirname, 'bin', name)
+}
+
+function jobDir() {
+  const dir = path.join(app.getPath('temp'), 'vedo-jobs')
+  fs.mkdirSync(dir, { recursive: true })
+  return dir
+}
+
+function safeJobFile(name) {
+  const base = path.basename(String(name))
+  if (!base || base === '.' || base === '..') throw new Error('Invalid temp file name')
+  return path.join(jobDir(), base)
+}
+
+function parseProgress(line, totalSec) {
+  // ffmpeg stderr: "... time=00:01:23.45 ..."
+  const m = /time=(\d+):(\d+):(\d+(?:\.\d+)?)/.exec(line)
+  if (!m || !totalSec || totalSec <= 0) return null
+  const sec = Number(m[1]) * 3600 + Number(m[2]) * 60 + Number(m[3])
+  return Math.max(0, Math.min(100, Math.round((sec / totalSec) * 100)))
+}
+
+function registerIpc() {
+  ipcMain.handle('vedo:ffmpeg-available', () => {
+    try {
+      return fs.existsSync(ffmpegBinaryPath())
+    } catch {
+      return false
+    }
+  })
+
+  ipcMain.handle('vedo:temp-write', async (_e, name, data) => {
+    const target = safeJobFile(name)
+    await fs.promises.writeFile(target, Buffer.from(data))
+    return target
+  })
+
+  ipcMain.handle('vedo:temp-read', async (_e, name) => {
+    return fs.promises.readFile(safeJobFile(name))
+  })
+
+  ipcMain.handle('vedo:temp-cleanup', async () => {
+    const dir = jobDir()
+    const entries = await fs.promises.readdir(dir).catch(() => [])
+    await Promise.all(
+      entries.map((f) => fs.promises.unlink(path.join(dir, f)).catch(() => {})),
+    )
+  })
+
+  ipcMain.handle('vedo:ffmpeg-run', (event, args, totalDurationSec) => {
+    return new Promise((resolve, reject) => {
+      if (!Array.isArray(args) || args.some((a) => typeof a !== 'string')) {
+        reject(new Error('Invalid ffmpeg arguments'))
+        return
+      }
+      const bin = ffmpegBinaryPath()
+      if (!fs.existsSync(bin)) {
+        reject(new Error('ffmpeg binary not found — run: pnpm fetch-ffmpeg'))
+        return
+      }
+
+      const child = spawn(bin, args, { cwd: jobDir(), windowsHide: true })
+      let stderrTail = ''
+
+      child.stderr.on('data', (chunk) => {
+        const text = chunk.toString()
+        stderrTail = (stderrTail + text).slice(-4000)
+        const pct = parseProgress(text, totalDurationSec)
+        if (pct !== null && !event.sender.isDestroyed()) {
+          event.sender.send('vedo:ffmpeg-progress', pct)
+        }
+      })
+
+      child.on('error', (err) => reject(err))
+      child.on('close', (code) => resolve({ code: code ?? -1, stderrTail }))
+    })
+  })
+}
 
 protocol.registerSchemesAsPrivileged([
   {
@@ -85,6 +172,7 @@ function createWindow() {
     title: 'Vedo — AI Video Editor',
     autoHideMenuBar: true,
     webPreferences: {
+      preload: path.join(__dirname, 'preload.cjs'),
       contextIsolation: true,
       nodeIntegration: false,
       sandbox: true,
@@ -110,6 +198,7 @@ function createWindow() {
 
 app.whenReady().then(() => {
   registerAppProtocol()
+  registerIpc()
   createWindow()
 
   app.on('activate', () => {

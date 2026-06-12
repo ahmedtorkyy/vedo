@@ -1,5 +1,12 @@
 import { useClipStore } from '../state/clip-store'
 import type { Clip, AudioCleansingOptions } from '../../types'
+import {
+  isNativeFFmpeg,
+  nativeExtractAudio,
+  nativeCleanAudio,
+  nativeSmartCut,
+  nativeConcat,
+} from './native'
 
 let worker: Worker | null = null
 let isRunning = false
@@ -98,6 +105,9 @@ function handleWorkerMessage(e: MessageEvent) {
 }
 
 export async function extractAudio(projectId: string, inputName: string): Promise<string> {
+  if (isNativeFFmpeg()) {
+    return nativeExtractAudio(projectId, inputName)
+  }
   const outputName = `_audio_${Date.now()}.wav`
   getWorker().postMessage({
     type: 'extract-audio',
@@ -113,6 +123,9 @@ export async function cleanAudio(
   inputName: string,
   options: AudioCleansingOptions,
 ): Promise<string> {
+  if (isNativeFFmpeg()) {
+    return nativeCleanAudio(projectId, inputName, options)
+  }
   const outputName = `_cleaned_${Date.now()}.wav`
   getWorker().postMessage({
     type: 'clean-audio',
@@ -124,6 +137,11 @@ export async function cleanAudio(
 }
 
 export async function loadFFmpeg(): Promise<void> {
+  if (isNativeFFmpeg()) {
+    // Native binary needs no loading — instantly ready.
+    useClipStore.getState().setConcatStatus('idle')
+    return
+  }
   useClipStore.getState().setConcatStatus('loading-ffmpeg')
   getWorker().postMessage({ type: 'load' })
   return new Promise<void>((resolve, reject) => {
@@ -150,16 +168,30 @@ export async function concatClips(
     return { name: c.opfsFilename, muted: c.muted }
   })
 
-  return new Promise<string>((resolve, reject) => {
-    pendingConcat = { resolve, reject }
-    getWorker().postMessage({
-      type: 'concat',
-      payload: {
-        projectId,
-        clips: workerClips,
-      },
-    })
-  }).then((outputFilename: string) => {
+  const concatPromise = isNativeFFmpeg()
+    ? nativeConcat(projectId, workerClips)
+        .then((outputFilename) => {
+          useClipStore.getState().setConcatStatus('done', outputFilename)
+          isRunning = false
+          return outputFilename
+        })
+        .catch((err) => {
+          useClipStore.getState().setConcatStatus('error')
+          isRunning = false
+          throw err
+        })
+    : new Promise<string>((resolve, reject) => {
+        pendingConcat = { resolve, reject }
+        getWorker().postMessage({
+          type: 'concat',
+          payload: {
+            projectId,
+            clips: workerClips,
+          },
+        })
+      })
+
+  return concatPromise.then((outputFilename: string) => {
     for (const clip of clips) {
       if (!clip.normalizedOpfsFilename || clip.normalizedMutedState !== clip.muted) {
         const normName = `_norm_${clip.opfsFilename}`
@@ -177,6 +209,9 @@ export async function smartCutVideo(
   segments: { start: number; end: number }[],
   totalDuration: number,
 ): Promise<string> {
+  if (isNativeFFmpeg()) {
+    return nativeSmartCut(projectId, inputName, segments, totalDuration)
+  }
   const outputName = `_smartcut_${Date.now()}.mp4`
   getWorker().postMessage({
     type: 'smart-cut',

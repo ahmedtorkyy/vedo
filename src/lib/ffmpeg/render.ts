@@ -3,6 +3,7 @@ import { useDirectorStore } from '../director/director-store'
 import { useClipStore } from '../state/clip-store'
 import { useTranscriptionStore } from '../transcription/transcription-store'
 import { smartCutVideo } from './concat'
+import { isNativeFFmpeg, nativeRenderClip, nativeRenderConcat } from './native'
 import { buildCodecParams, buildScaleParams, buildDrawtextFilters, buildSubtitleFilter, mapSegmentsThroughTrims } from '../export'
 import type { ExportOptions, ExportScaleParams } from '../export'
 
@@ -344,9 +345,8 @@ export async function exportVideo(projectId: string, options: ExportOptions): Pr
           .map((cid) => clipsB.find((b) => b.id === cid)?.opfsFilename)
           .filter((n): n is string => !!n)
 
-        getWorker().postMessage({
-          type: 'render-clip',
-          payload: {
+        if (isNativeFFmpeg()) {
+          currentName = await nativeRenderClip({
             projectId,
             inputName: currentName,
             outputName: outName,
@@ -355,12 +355,28 @@ export async function exportVideo(projectId: string, options: ExportOptions): Pr
             codec,
             textFiles,
             assFiles,
-          },
-        })
+            totalDurationSec: clip.duration > 0 ? clip.duration : undefined,
+            onProgress: (pct) => sendProgress('processing', pct, `Rendering clip... ${pct}%`),
+          })
+        } else {
+          getWorker().postMessage({
+            type: 'render-clip',
+            payload: {
+              projectId,
+              inputName: currentName,
+              outputName: outName,
+              filterComplex,
+              overlayInputNames,
+              codec,
+              textFiles,
+              assFiles,
+            },
+          })
 
-        currentName = await new Promise<string>((resolve, reject) => {
-          pendingRender = { resolve, reject }
-        })
+          currentName = await new Promise<string>((resolve, reject) => {
+            pendingRender = { resolve, reject }
+          })
+        }
         tempFiles.push(currentName)
       }
     }
@@ -376,37 +392,56 @@ export async function exportVideo(projectId: string, options: ExportOptions): Pr
     const outName = `_final_${Date.now()}.${codec.extension}`
     const clips = processedNames.map((name) => ({ name, duration: 0 }))
 
-    getWorker().postMessage({
-      type: 'render-concat',
-      payload: {
+    if (isNativeFFmpeg()) {
+      finalName = await nativeRenderConcat({
         projectId,
         clips,
         outputName: outName,
         codec,
-      },
-    })
+        onProgress: (pct) => sendProgress('concatenating', 85 + Math.round(pct * 0.15), `Concatenating... ${pct}%`),
+      })
+    } else {
+      getWorker().postMessage({
+        type: 'render-concat',
+        payload: {
+          projectId,
+          clips,
+          outputName: outName,
+          codec,
+        },
+      })
 
-    finalName = await new Promise<string>((resolve, reject) => {
-      pendingConcat = { resolve, reject }
-    })
+      finalName = await new Promise<string>((resolve, reject) => {
+        pendingConcat = { resolve, reject }
+      })
+    }
   } else {
     if (processedNames[0].endsWith(codec.extension)) {
       finalName = processedNames[0]
     } else {
       // Re-wrap single clip into target format if needed
       const outName = `_final_${Date.now()}.${codec.extension}`
-      getWorker().postMessage({
-        type: 'render-concat',
-        payload: {
+      if (isNativeFFmpeg()) {
+        finalName = await nativeRenderConcat({
           projectId,
           clips: [{ name: processedNames[0], duration: 0 }],
           outputName: outName,
           codec,
-        },
-      })
-      finalName = await new Promise<string>((resolve, reject) => {
-        pendingConcat = { resolve, reject }
-      })
+        })
+      } else {
+        getWorker().postMessage({
+          type: 'render-concat',
+          payload: {
+            projectId,
+            clips: [{ name: processedNames[0], duration: 0 }],
+            outputName: outName,
+            codec,
+          },
+        })
+        finalName = await new Promise<string>((resolve, reject) => {
+          pendingConcat = { resolve, reject }
+        })
+      }
     }
   }
 

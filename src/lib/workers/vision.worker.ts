@@ -39,7 +39,7 @@ async function handleLoad() {
         runningMode: 'IMAGE',
         minDetectionConfidence: 0.5,
       })
-    } catch { }
+    } catch { /* detector unavailable — graceful fallback */ }
   }
 
   try {
@@ -55,7 +55,7 @@ async function handleLoad() {
         baseOptions: { modelAssetPath: objectDetectorModelPath(), delegate: 'CPU' },
         runningMode: 'IMAGE',
       })
-    } catch { }
+    } catch { /* detector unavailable — graceful fallback */ }
   }
 
   const loaded: string[] = []
@@ -112,7 +112,7 @@ async function handleAnalyze(payload: { frames: VideoFrame[]; duration: number; 
             height: bb?.height ?? 0,
           })
         }
-      } catch { }
+      } catch { /* detector unavailable — graceful fallback */ }
     }
 
     if (objectDetector) {
@@ -132,7 +132,7 @@ async function handleAnalyze(payload: { frames: VideoFrame[]; duration: number; 
             }
           }
         }
-      } catch { }
+      } catch { /* detector unavailable — graceful fallback */ }
     }
 
     if (prevData) {
