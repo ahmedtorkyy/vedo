@@ -2,7 +2,7 @@ import type { TranscriptionSegment } from '../../types'
 
 let worker: Worker | null = null
 
-type ModelKey = 'whisper-tiny' | 'whisper-base' | 'whisper-small'
+export type ModelKey = 'whisper-tiny' | 'whisper-base' | 'whisper-small' | 'whisper-medium' | 'whisper-large-v3'
 
 const SUPPORTED_LANGUAGES = [
   'en', 'ar', 'zh', 'fr', 'de', 'ja', 'ko', 'es', 'pt', 'ru',
@@ -31,7 +31,9 @@ export function getAvailableModels(): { key: ModelKey; label: string }[] {
   return [
     { key: 'whisper-tiny', label: 'Whisper Tiny (multilingual, fastest)' },
     { key: 'whisper-base', label: 'Whisper Base (multilingual, balanced)' },
-    { key: 'whisper-small', label: 'Whisper Small (multilingual, best accuracy)' },
+    { key: 'whisper-small', label: 'Whisper Small (multilingual)' },
+    { key: 'whisper-medium', label: 'Whisper Medium (multilingual, high accuracy)' },
+    { key: 'whisper-large-v3', label: 'Whisper Large v3 (multilingual, best accuracy)' },
   ]
 }
 

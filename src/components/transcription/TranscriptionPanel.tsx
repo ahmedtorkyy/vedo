@@ -4,7 +4,7 @@ import { useTranscriptionStore } from '../../lib/transcription'
 import { useTranscription } from '../../hooks/useTranscription'
 import { TranscriptionSegmentRow } from './TranscriptionSegment'
 import { CaptionEditor } from './CaptionEditor'
-import { isModelReady, onModelReadyChange } from '../../lib/transcription/model-loader'
+import { isModelReady, onModelReadyChange, getModelDisplayName } from '../../lib/transcription/model-loader'
 import type { AudioCleansingOptions } from '../../types'
 
 interface TranscriptionPanelProps {
@@ -76,7 +76,7 @@ export function TranscriptionPanel({ projectId }: TranscriptionPanelProps) {
 
       {bgStatus === 'ready' && (
         <div role="status" className="rounded-md bg-emerald-900/30 px-3 py-2 text-xs text-emerald-300">
-          AI model ready &mdash; whisper-base multilingual
+          AI model ready &mdash; {getModelDisplayName()}
         </div>
       )}
 

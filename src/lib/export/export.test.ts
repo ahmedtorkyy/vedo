@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { buildKeptIntervals, mapSegmentsThroughOffset, mapSegmentsThroughTrims } from './ass-generator'
+import { buildKeptIntervals, mapSegmentsThroughOffset, mapSegmentsThroughTrims, wrapCaptionText, buildDrawtextFilters } from './ass-generator'
 import { buildSrt, buildVtt } from './subtitle-formats'
 import { buildScaleParams, buildCodecParams, getQualityDims } from './build-export-params'
 import type { TranscriptionSegment } from '../../types'
@@ -232,5 +232,42 @@ describe('buildCodecParams', () => {
     const params = buildCodecParams({ quality: '1080p', format: 'mkv', platform: 'none', burnCaptions: false })
     expect(params.videoCodec).toBe('libx264')
     expect(params.extension).toBe('mkv')
+  })
+})
+
+describe('wrapCaptionText (regression: long lines overflowed frame width)', () => {
+  const W = 1080
+  const FONT = 64 // 1920 / 30
+
+  it('keeps short captions on one line', () => {
+    expect(wrapCaptionText('hello world', W, FONT)).toBe('hello world')
+  })
+
+  it('wraps a long Arabic transcript line into multiple lines within the limit', () => {
+    const long = 'المكس ده اختراع للناس اللي بتحب المشروبات اللذيذة بس مدلعين شوية وعايزين كل حاجة جاهزة'
+    const wrapped = wrapCaptionText(long, W, FONT)
+    const lines = wrapped.split('\n')
+    expect(lines.length).toBeGreaterThan(1)
+    const maxChars = Math.max(8, Math.floor((W * 0.9) / (FONT * 0.55)))
+    for (const line of lines) {
+      expect(line.length).toBeLessThanOrEqual(maxChars)
+    }
+  })
+
+  it('never splits inside a word', () => {
+    const long = 'aaaa bbbb cccc dddd eeee ffff gggg hhhh iiii jjjj kkkk llll mmmm nnnn'
+    const wrapped = wrapCaptionText(long, W, FONT)
+    const rejoined = wrapped.replace(/\n/g, ' ')
+    expect(rejoined).toBe(long)
+  })
+
+  it('drawtext textfiles contain wrapped content', () => {
+    const long = 'كلام كثير جدا يحتاج الى التفاف لانه اطول من عرض الشاشة بكثير وفيه كلمات كتيرة اوي'
+    const { textFiles } = buildDrawtextFilters(
+      [{ start: 0, end: 2, text: long, stitchedStart: 0, stitchedEnd: 2 }],
+      1080, 1920,
+    )
+    expect(textFiles).toHaveLength(1)
+    expect(textFiles[0].content).toContain('\n')
   })
 })

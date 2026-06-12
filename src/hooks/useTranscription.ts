@@ -1,17 +1,21 @@
 import { useCallback, useRef } from 'react'
 import { useClipStore } from '../lib/state'
 import { extractAudio, cleanAudio } from '../lib/ffmpeg'
-import { loadTranscriptionModel, transcribeFromOpfs } from '../lib/transcription'
+import { transcribeFromOpfs } from '../lib/transcription'
 import { useTranscriptionStore } from '../lib/transcription'
+import { backgroundLoadModel, isModelReady } from '../lib/transcription/model-loader'
 import type { AudioCleansingOptions } from '../types'
-
-const MODEL_KEY = 'whisper-base'
 
 export function useTranscription() {
   const transcribingRef = useRef(false)
 
+  // Loads through the quality ladder (large-v3 → medium → small) and reuses
+  // whatever the background loader already brought up — never reloads.
   const ensureModel = useCallback(async () => {
-    await loadTranscriptionModel(MODEL_KEY)
+    await backgroundLoadModel()
+    if (!isModelReady()) {
+      throw new Error('AI model could not be loaded — check your connection and retry.')
+    }
   }, [])
 
   const transcribeClip = useCallback(async (projectId: string, clipId: string) => {

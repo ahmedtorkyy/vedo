@@ -16,9 +16,37 @@ function fontForText(text: string): string {
   return hasArabic(text) ? ARABIC_FONT : LATIN_FONT
 }
 
+/**
+ * Wrap caption text so no line exceeds the safe drawable width.
+ * drawtext does not wrap automatically — long transcript lines render wider
+ * than the frame and get clipped at both edges. Newlines in the textfile
+ * render as centered line breaks. Wrapping splits on spaces only, which is
+ * safe for Arabic shaping (letter joining never crosses a space).
+ */
+export function wrapCaptionText(text: string, videoWidth: number, fontSize: number): string {
+  const usable = videoWidth * 0.9
+  const avgGlyph = fontSize * 0.55
+  const maxChars = Math.max(8, Math.floor(usable / avgGlyph))
+
+  const words = text.split(/\s+/).filter(Boolean)
+  const lines: string[] = []
+  let line = ''
+  for (const w of words) {
+    const candidate = line ? `${line} ${w}` : w
+    if (candidate.length > maxChars && line) {
+      lines.push(line)
+      line = w
+    } else {
+      line = candidate
+    }
+  }
+  if (line) lines.push(line)
+  return lines.join('\n')
+}
+
 export function buildDrawtextFilters(
   segments: SegmentWithTiming[],
-  _videoWidth: number,
+  videoWidth: number,
   videoHeight: number,
 ): DrawtextResult {
   const fontSize = Math.max(16, Math.round(videoHeight / 30))
@@ -33,10 +61,11 @@ export function buildDrawtextFilters(
     if (!seg.text.trim() || seg.stitchedEnd <= seg.stitchedStart) continue
     const enable = `between(t,${seg.stitchedStart.toFixed(3)},${seg.stitchedEnd.toFixed(3)})`
     const filename = `caption_${i}.txt`
+    const wrapped = wrapCaptionText(seg.text.trim(), videoWidth, fontSize)
     filters.push(
-      `drawtext=textfile=${filename}:fontfile=${fontForText(seg.text.trim())}:fontsize=${fontSize}:fontcolor=white:borderw=${borderWidth}:bordercolor=black:x=(w-text_w)/2:y=${yPos}:enable='${enable}'`
+      `drawtext=textfile=${filename}:fontfile=${fontForText(seg.text.trim())}:fontsize=${fontSize}:fontcolor=white:borderw=${borderWidth}:bordercolor=black:x=(w-text_w)/2:y=${yPos}:line_spacing=${Math.round(fontSize * 0.25)}:enable='${enable}'`
     )
-    textFiles.push({ name: filename, content: seg.text.trim() })
+    textFiles.push({ name: filename, content: wrapped })
   }
 
   return { filters, textFiles }

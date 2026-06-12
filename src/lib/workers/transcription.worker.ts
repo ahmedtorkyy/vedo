@@ -87,11 +87,26 @@ const MODELS = {
   'whisper-tiny': 'Xenova/whisper-tiny',
   'whisper-base': 'Xenova/whisper-base',
   'whisper-small': 'Xenova/whisper-small',
+  'whisper-medium': 'Xenova/whisper-medium',
+  'whisper-large-v3': 'Xenova/whisper-large-v3',
 } as const
 
 type ModelKey = keyof typeof MODELS
 
-async function loadModel(modelKey: ModelKey = 'whisper-base') {
+let currentModel: ModelKey | null = null
+
+/** Detect language honestly when the model doesn't report one. */
+function resolveLanguage(reported: unknown, segments: { text: string }[]): string {
+  if (typeof reported === 'string' && reported.length > 0) return reported
+  const joined = segments.map((s) => s.text).join(' ')
+  return /[؀-ۿݐ-ݿ]/.test(joined) ? 'ar' : 'en'
+}
+
+async function loadModel(modelKey: ModelKey = 'whisper-large-v3') {
+  if (loaded && currentModel === modelKey) {
+    self.postMessage({ type: 'model-loaded', model: modelKey })
+    return
+  }
   if (loading) return
   loading = true
   try {
@@ -101,6 +116,7 @@ async function loadModel(modelKey: ModelKey = 'whisper-base') {
       quantized: true,
     })
     loaded = true
+    currentModel = modelKey
     self.postMessage({ type: 'model-loaded', model: modelKey })
   } catch (err) {
     self.postMessage({ type: 'load-error', error: String(err) })
@@ -117,7 +133,7 @@ self.onmessage = async (e: MessageEvent) => {
   const { type, payload } = e.data
 
   if (type === 'load') {
-    await loadModel(payload?.model ?? 'whisper-base')
+    await loadModel(payload?.model ?? 'whisper-large-v3')
     return
   }
 
@@ -152,7 +168,7 @@ self.onmessage = async (e: MessageEvent) => {
           text: (chunk.text ?? chunk.transcript ?? '').trim(),
         })).filter((s) => s.text.length > 0)
 
-        const language = typeof result.language === 'string' ? result.language : 'en'
+        const language = resolveLanguage(result.language, segments)
 
         self.postMessage({ type: 'result', segments, words, language })
       } else {
@@ -171,7 +187,7 @@ self.onmessage = async (e: MessageEvent) => {
           text: (chunk.text ?? chunk.transcript ?? '').trim(),
         })).filter((s) => s.text.length > 0)
 
-        const language = typeof result.language === 'string' ? result.language : 'en'
+        const language = resolveLanguage(result.language, segments)
 
         self.postMessage({
           type: 'result',
@@ -224,7 +240,7 @@ self.onmessage = async (e: MessageEvent) => {
           text: (chunk.text ?? chunk.transcript ?? '').trim(),
         })).filter((s) => s.text.length > 0)
 
-        const language = typeof result.language === 'string' ? result.language : 'en'
+        const language = resolveLanguage(result.language, segments)
 
         self.postMessage({ type: 'result', segments, words, language })
       } else {
@@ -243,7 +259,7 @@ self.onmessage = async (e: MessageEvent) => {
           text: (chunk.text ?? chunk.transcript ?? '').trim(),
         })).filter((s) => s.text.length > 0)
 
-        const language = typeof result.language === 'string' ? result.language : 'en'
+        const language = resolveLanguage(result.language, segments)
 
         self.postMessage({ type: 'result', segments, language })
       }
@@ -258,6 +274,7 @@ self.onmessage = async (e: MessageEvent) => {
     pipeline = null
     loaded = false
     loading = false
+    currentModel = null
     self.postMessage({ type: 'unloaded' })
   }
 }
