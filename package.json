@@ -1,14 +1,20 @@
 {
   "name": "vedo",
   "private": true,
-  "version": "0.0.0",
+  "version": "0.1.0",
   "type": "module",
+  "main": "electron/main.cjs",
+  "description": "Vedo — AI video editor",
+  "author": "Ahmed Torky",
   "scripts": {
     "dev": "vite",
     "build": "tsc -b && vite build",
     "lint": "eslint .",
     "test": "vitest run",
-    "preview": "vite preview"
+    "preview": "vite preview",
+    "app": "npm run build && electron .",
+    "app:fast": "electron .",
+    "dist": "npm run build && electron-builder --win"
   },
   "dependencies": {
     "@ffmpeg/ffmpeg": "^0.12.15",
@@ -27,8 +33,32 @@
       "protobufjs",
       "sharp",
       "workerd",
-      "@mediapipe/tasks-vision"
+      "@mediapipe/tasks-vision",
+      "electron",
+      "electron-builder"
     ]
+  },
+  "build": {
+    "appId": "com.torky.vedo",
+    "productName": "Vedo",
+    "directories": {
+      "output": "release"
+    },
+    "files": [
+      "dist/**/*",
+      "electron/**/*"
+    ],
+    "win": {
+      "target": [
+        "nsis",
+        "portable"
+      ]
+    },
+    "nsis": {
+      "oneClick": true,
+      "perMachine": false,
+      "deleteAppDataOnUninstall": false
+    }
   },
   "devDependencies": {
     "@eslint/js": "^10.0.1",
@@ -39,6 +69,8 @@
     "@types/uuid": "^11.0.0",
     "@vitejs/plugin-react": "^6.0.1",
     "autoprefixer": "^10.5.0",
+    "electron": "^42.4.0",
+    "electron-builder": "^26.15.3",
     "eslint": "^10.3.0",
     "eslint-plugin-react-hooks": "^7.1.1",
     "eslint-plugin-react-refresh": "^0.5.2",
