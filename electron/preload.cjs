@@ -25,4 +25,17 @@ contextBridge.exposeInMainWorld('vedoNative', {
     ipcRenderer.on('vedo:ffmpeg-progress', handler)
     return () => ipcRenderer.removeListener('vedo:ffmpeg-progress', handler)
   },
+
+  // --- Native whisper transcription ---
+
+  whisperAvailable: () => ipcRenderer.invoke('vedo:whisper-available'),
+
+  // wavName is a file previously written via tempWrite; opts: { language?, wordTimestamps? }
+  whisperRun: (wavName, opts) => ipcRenderer.invoke('vedo:whisper-run', wavName, opts ?? {}),
+
+  onWhisperProgress: (cb) => {
+    const handler = (_event, pct) => cb(pct)
+    ipcRenderer.on('vedo:whisper-progress', handler)
+    return () => ipcRenderer.removeListener('vedo:whisper-progress', handler)
+  },
 })

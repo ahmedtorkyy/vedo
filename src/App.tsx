@@ -17,6 +17,7 @@ import { AudioOrchestrator } from './lib/audio'
 import { saveSessionSnapshot, restoreSession } from './lib/session/session-recovery'
 import { backfillClipMetadata } from './lib/state/clip-backfill'
 import { initNativeFFmpeg } from './lib/ffmpeg/native'
+import { initNativeWhisper } from './lib/transcription/native-whisper'
 
 type WorkspaceTab = 'slota' | 'slotb' | 'preview' | 'transcription' | 'editing' | 'director' | 'timeline' | 'export'
 const workspaceRef = { current: null as HTMLDivElement | null }
@@ -307,8 +308,10 @@ function App() {
 
   useEffect(() => {
     restoreSession()
-    backgroundLoadModel()
     initNativeFFmpeg()
+    // Detect native whisper before the model loader decides whether to pull a
+    // WASM model — when the desktop binary is present we skip that download.
+    initNativeWhisper().then(() => backgroundLoadModel())
     return () => { AudioOrchestrator.getInstance().dispose() }
   }, [])
 

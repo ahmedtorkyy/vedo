@@ -1,5 +1,6 @@
 import { loadTranscriptionModel } from './transcription-engine'
 import type { ModelKey } from './transcription-engine'
+import { initNativeWhisper, isNativeWhisper } from './native-whisper'
 
 /**
  * Quality ladder, best first. Ahmed's directive: maximum transcription
@@ -33,6 +34,14 @@ export async function backgroundLoadModel(): Promise<void> {
   if (loading) return
   loading = true
   try {
+    // Desktop app: native whisper needs no in-browser model download.
+    await initNativeWhisper()
+    if (isNativeWhisper()) {
+      loaded = true
+      loadedModel = null
+      notify(true)
+      return
+    }
     for (const key of MODEL_LADDER) {
       try {
         await loadTranscriptionModel(key)
@@ -51,7 +60,34 @@ export async function backgroundLoadModel(): Promise<void> {
 }
 
 export function isModelReady(): boolean {
-  return loaded
+  return loaded || isNativeWhisper()
+}
+
+/**
+ * Inference-time fallback: a model can load successfully and still fail at
+ * run time (wasm memory ceiling — "failed to call OrtRun"). Step one rung
+ * down the ladder and report whether a smaller model is now active.
+ */
+export async function stepDownModel(): Promise<boolean> {
+  if (!loadedModel) return false
+  const idx = MODEL_LADDER.indexOf(loadedModel)
+  for (let next = idx + 1; next < MODEL_LADDER.length; next++) {
+    try {
+      await loadTranscriptionModel(MODEL_LADDER[next])
+      loadedModel = MODEL_LADDER[next]
+      loaded = true
+      notify(true)
+      return true
+    } catch {
+      // keep stepping down
+    }
+  }
+  return false
+}
+
+export function isInferenceFailure(err: unknown): boolean {
+  const msg = err instanceof Error ? err.message : String(err)
+  return /OrtRun|failed to call|out of memory|allocation failed|RangeError/i.test(msg)
 }
 
 export function getLoadedModelKey(): ModelKey | null {
@@ -59,6 +95,7 @@ export function getLoadedModelKey(): ModelKey | null {
 }
 
 export function getModelDisplayName(): string {
+  if (isNativeWhisper()) return 'Native Whisper (desktop, best quality)'
   switch (loadedModel) {
     case 'whisper-large-v3': return 'Whisper Large v3 (best quality)'
     case 'whisper-medium': return 'Whisper Medium (high quality)'

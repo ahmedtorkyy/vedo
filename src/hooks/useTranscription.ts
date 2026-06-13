@@ -3,7 +3,7 @@ import { useClipStore } from '../lib/state'
 import { extractAudio, cleanAudio } from '../lib/ffmpeg'
 import { transcribeFromOpfs } from '../lib/transcription'
 import { useTranscriptionStore } from '../lib/transcription'
-import { backgroundLoadModel, isModelReady } from '../lib/transcription/model-loader'
+import { backgroundLoadModel, isModelReady, stepDownModel, isInferenceFailure } from '../lib/transcription/model-loader'
 import type { AudioCleansingOptions } from '../types'
 
 export function useTranscription() {
@@ -15,6 +15,21 @@ export function useTranscription() {
     await backgroundLoadModel()
     if (!isModelReady()) {
       throw new Error('AI model could not be loaded — check your connection and retry.')
+    }
+  }, [])
+
+  // Runs transcription, stepping down the model ladder when the loaded
+  // model fails at inference time (e.g. wasm memory ceiling on large-v3).
+  const transcribeWithFallback = useCallback(async (projectId: string, audioFile: string) => {
+    for (;;) {
+      try {
+        return await transcribeFromOpfs(projectId, audioFile)
+      } catch (err) {
+        if (isInferenceFailure(err) && await stepDownModel()) {
+          continue
+        }
+        throw err
+      }
     }
   }, [])
 
@@ -42,7 +57,7 @@ export function useTranscription() {
 
       await ensureModel()
 
-      const result = await transcribeFromOpfs(projectId, audioFile)
+      const result = await transcribeWithFallback(projectId, audioFile)
 
       store.setSegments(clipId, result.segments, result.language)
     } catch (err) {
@@ -50,7 +65,7 @@ export function useTranscription() {
     } finally {
       transcribingRef.current = false
     }
-  }, [ensureModel])
+  }, [ensureModel, transcribeWithFallback])
 
   const cleanseClipAudio = useCallback(async (
     projectId: string,
@@ -76,12 +91,12 @@ export function useTranscription() {
 
       await ensureModel()
 
-      const result = await transcribeFromOpfs(projectId, cleaned)
+      const result = await transcribeWithFallback(projectId, cleaned)
       store.setSegments(clipId, result.segments, result.language)
     } catch (err) {
       store.setError(clipId, err instanceof Error ? err.message : 'Audio cleansing failed')
     }
-  }, [ensureModel])
+  }, [ensureModel, transcribeWithFallback])
 
   return { transcribeClip, cleanseClipAudio }
 }

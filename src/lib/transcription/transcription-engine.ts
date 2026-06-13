@@ -1,4 +1,5 @@
 import type { TranscriptionSegment } from '../../types'
+import { isNativeWhisper, nativeTranscribeFromOpfs } from './native-whisper'
 
 let worker: Worker | null = null
 
@@ -89,6 +90,11 @@ export async function transcribeFromOpfs(
   opfsFilename: string,
   wordTimestamps?: boolean,
 ): Promise<{ segments: TranscriptionSegment[]; language: string; words?: { word: string; start: number; end: number }[] }> {
+  // Desktop app: run the real whisper binary (no WASM memory ceiling).
+  if (isNativeWhisper()) {
+    return nativeTranscribeFromOpfs(projectId, opfsFilename, wordTimestamps)
+  }
+
   const w = getWorker()
 
   return new Promise<{ segments: TranscriptionSegment[]; language: string; words?: { word: string; start: number; end: number }[] }>((resolve, reject) => {

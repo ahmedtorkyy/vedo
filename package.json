@@ -15,6 +15,7 @@
     "app": "npm run build && electron .",
     "app:fast": "electron .",
     "fetch-ffmpeg": "node scripts/fetch-ffmpeg.mjs",
+    "fetch-whisper": "node scripts/fetch-whisper.mjs",
     "dist": "npm run build && electron-builder --win"
   },
   "dependencies": {

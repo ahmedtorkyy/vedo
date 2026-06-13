@@ -62,8 +62,17 @@ async function run(args: string[], totalDurationSec?: number, onProgress?: (pct:
     }
   } finally {
     unsub?.()
-    await native.tempCleanup().catch(() => {})
   }
+}
+
+/**
+ * Start each operation with a clean job directory. Cleanup must happen at
+ * the START of an operation — never right after an ffmpeg run — because the
+ * produced output file still needs to be collected back into OPFS, and
+ * multi-step operations (concat normalization) keep files between runs.
+ */
+async function freshJobDir(): Promise<void> {
+  await window.vedoNative!.tempCleanup().catch(() => {})
 }
 
 // --- Fonts and caption text files for render jobs ---
@@ -92,6 +101,7 @@ async function stageTextFiles(files: { name: string; content: string }[] | undef
 // --- Operations (argument-identical to the wasm worker) ---
 
 export async function nativeExtractAudio(projectId: string, inputName: string): Promise<string> {
+  await freshJobDir()
   const outputName = `_audio_${Date.now()}.wav`
   await stageInput(projectId, inputName)
   await run(['-y', '-i', inputName, '-vn', '-ar', '16000', '-ac', '1', '-f', 'wav', outputName])
@@ -104,6 +114,7 @@ export async function nativeCleanAudio(
   inputName: string,
   options: AudioCleansingOptions,
 ): Promise<string> {
+  await freshJobDir()
   const outputName = `_cleaned_${Date.now()}.wav`
   await stageInput(projectId, inputName)
 
@@ -128,6 +139,7 @@ export async function nativeSmartCut(
   segments: { start: number; end: number }[],
   totalDuration: number,
 ): Promise<string> {
+  await freshJobDir()
   const outputName = `_smartcut_${Date.now()}.mp4`
   await stageInput(projectId, inputName)
 
@@ -163,6 +175,7 @@ export async function nativeConcat(
   clips: { name: string; muted?: boolean; normalizedName?: string }[],
   onProgress?: (pct: number) => void,
 ): Promise<string> {
+  await freshJobDir()
   const native = window.vedoNative!
   const normalizedNames: string[] = []
 
@@ -218,6 +231,7 @@ export async function nativeRenderClip(payload: {
 }): Promise<string> {
   const { projectId, inputName, outputName, overlayInputNames, codec, textFiles, assFiles, totalDurationSec, onProgress } = payload
 
+  await freshJobDir()
   await stageInput(projectId, inputName)
   const args = ['-y', '-i', inputName]
   for (const ov of overlayInputNames ?? []) {
@@ -258,6 +272,7 @@ export async function nativeRenderConcat(payload: {
   const { projectId, clips, outputName, codec, onProgress } = payload
   const native = window.vedoNative!
 
+  await freshJobDir()
   for (const clip of clips) {
     await stageInput(projectId, clip.name)
   }
